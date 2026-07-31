@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import json
 import secrets
 import zlib
 from difflib import SequenceMatcher
@@ -266,7 +265,9 @@ def _rotl32(value: int, shift: int) -> int:
 
 def _gost_round(value: int, key: int) -> int:
     value = (value + key) & 0xFFFFFFFF
-    substituted = sum(_GOST_SBOX[index][(value >> (4 * index)) & 15] << (4 * index) for index in range(8))
+    substituted = sum(
+        _GOST_SBOX[index][(value >> (4 * index)) & 15] << (4 * index) for index in range(8)
+    )
     return _rotl32(substituted, 11)
 
 
@@ -291,7 +292,12 @@ def _pkcs7(data: bytes, block_size: int) -> bytes:
 
 
 def _unpkcs7(data: bytes, block_size: int) -> bytes:
-    if not data or data[-1] < 1 or data[-1] > block_size or data[-data[-1] :] != bytes([data[-1]]) * data[-1]:
+    if (
+        not data
+        or data[-1] < 1
+        or data[-1] > block_size
+        or data[-data[-1] :] != bytes([data[-1]]) * data[-1]
+    ):
         raise ValueError("Invalid block padding")
     return data[: -data[-1]]
 
@@ -370,7 +376,11 @@ def gost_sign(value: Data, args: Args) -> Data:
 def gost_verify(value: Data, args: Args) -> Data:
     expected = str(arg(args, 1, ""))
     actual = gost_sign(value, [arg(args, 0, ""), *args[2:]])
-    return "Verified OK" if hmac.compare_digest(to_text(actual), expected.lower()) else "Verification Failure"
+    return (
+        "Verified OK"
+        if hmac.compare_digest(to_text(actual), expected.lower())
+        else "Verification Failure"
+    )
 
 
 @operation("GOST Key Wrap", category="Ciphers")
@@ -400,7 +410,10 @@ def gost_key_unwrap(value: Data, args: Args) -> Data:
 def _twofish_round_keys(key: bytes) -> list[bytes]:
     if len(key) not in {16, 24, 32}:
         raise ValueError("Twofish key must contain 16, 24, or 32 bytes")
-    return [hashlib.sha256(b"Twofish round\0" + key + bytes([index])).digest()[:8] for index in range(16)]
+    return [
+        hashlib.sha256(b"Twofish round\0" + key + bytes([index])).digest()[:8]
+        for index in range(16)
+    ]
 
 
 def _twofish_block(block: bytes, key: bytes, decrypt: bool = False) -> bytes:
