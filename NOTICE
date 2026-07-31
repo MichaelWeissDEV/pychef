@@ -1,0 +1,9 @@
+PyChef
+Copyright 2026 PyChef contributors
+
+This product includes behavior and test vectors derived from CyberChef:
+Copyright Crown Copyright 2016, GCHQ, licensed under Apache License 2.0.
+https://github.com/gchq/CyberChef
+
+All ported source files have been rewritten in Python and modified for this project.
+

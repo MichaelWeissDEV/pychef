@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pychef"
+version = "0.1.0"
+description = "A pure-Python implementation of CyberChef recipes and operations"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "PyChef contributors" }]
+keywords = ["cyberchef", "encoding", "cryptography", "data-transformation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/michaelweiss/pychef"
+Upstream = "https://github.com/gchq/CyberChef"
+
+[dependency-groups]
+dev = [
+  "coverage[toml]>=7.10",
+  "pytest>=8.4",
+  "pytest-cov>=6.2",
+  "ruff>=0.12",
+  "ty>=0.0.1a16",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pychef"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=pychef --cov-report=term-missing --cov-fail-under=75"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["pychef"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 75
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise AssertionError",
+  "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.ty.environment]
+python-version = "3.10"
