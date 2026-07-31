@@ -4,9 +4,9 @@ This inventory is pinned to CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
 - Upstream operations: 502
-- Implemented operation names: 337
-- Missing operation names: 165
-- Name coverage: 67.1%
+- Implemented operation names: 368
+- Missing operation names: 134
+- Name coverage: 73.3%
 
 “Implemented” means that a callable operation is registered. It does not claim
 bit-for-bit parity for every option combination. The pytest suite contains the
@@ -19,10 +19,10 @@ registered as placeholders and therefore fail explicitly with
 | A1Z26 Cipher Decode | implemented |
 | A1Z26 Cipher Encode | implemented |
 | ADD | implemented |
-| AES Decrypt | missing |
-| AES Encrypt | missing |
-| AES Key Unwrap | missing |
-| AES Key Wrap | missing |
+| AES Decrypt | implemented |
+| AES Encrypt | implemented |
+| AES Key Unwrap | implemented |
+| AES Key Wrap | implemented |
 | AMF Decode | missing |
 | AMF Encode | missing |
 | AND | implemented |
@@ -65,7 +65,7 @@ registered as placeholders and therefore fail explicitly with
 | Bzip2 Decompress | implemented |
 | CBOR Decode | implemented |
 | CBOR Encode | implemented |
-| CMAC | missing |
+| CMAC | implemented |
 | CRC Checksum | implemented |
 | CSS Beautify | implemented |
 | CSS Minify | implemented |
@@ -102,8 +102,8 @@ registered as placeholders and therefore fail explicitly with
 | Count occurrences | implemented |
 | Cover Image | missing |
 | Crop Image | missing |
-| DES Decrypt | missing |
-| DES Encrypt | missing |
+| DES Decrypt | implemented |
+| DES Encrypt | implemented |
 | DNS over HTTPS | missing |
 | DateTime Delta | implemented |
 | Dechunk HTTP response | implemented |
@@ -125,7 +125,7 @@ registered as placeholders and therefore fail explicitly with
 | ECDSA Sign | missing |
 | ECDSA Signature Conversion | missing |
 | ECDSA Verify | missing |
-| ELF Info | missing |
+| ELF Info | implemented |
 | Encode NetBIOS Name | implemented |
 | Encode text | implemented |
 | Enigma | missing |
@@ -220,9 +220,9 @@ registered as placeholders and therefore fail explicitly with
 | Group IP addresses | implemented |
 | Gunzip | implemented |
 | Gzip | implemented |
-| HAS-160 | missing |
-| HASSH Client Fingerprint | missing |
-| HASSH Server Fingerprint | missing |
+| HAS-160 | implemented |
+| HASSH Client Fingerprint | implemented |
+| HASSH Server Fingerprint | implemented |
 | HMAC | implemented |
 | HTML To Text | implemented |
 | HTTP request | missing |
@@ -240,10 +240,10 @@ registered as placeholders and therefore fail explicitly with
 | Image Opacity | missing |
 | Index of Coincidence | implemented |
 | Invert Image | missing |
-| JA3 Fingerprint | missing |
-| JA3S Fingerprint | missing |
-| JA4 Fingerprint | missing |
-| JA4Server Fingerprint | missing |
+| JA3 Fingerprint | implemented |
+| JA3S Fingerprint | implemented |
+| JA4 Fingerprint | implemented |
+| JA4Server Fingerprint | implemented |
 | JPath expression | implemented |
 | JSON Beautify | implemented |
 | JSON Minify | implemented |
@@ -260,16 +260,16 @@ registered as placeholders and therefore fail explicitly with
 | Jsonata Query | missing |
 | Jump | missing |
 | Keccak | implemented |
-| LM Hash | missing |
+| LM Hash | implemented |
 | LS47 Decrypt | implemented |
 | LS47 Encrypt | implemented |
-| LZ4 Compress | missing |
-| LZ4 Decompress | missing |
+| LZ4 Compress | implemented |
+| LZ4 Decompress | implemented |
 | LZMA Compress | implemented |
 | LZMA Decompress | implemented |
-| LZNT1 Decompress | missing |
-| LZString Compress | missing |
-| LZString Decompress | missing |
+| LZNT1 Decompress | implemented |
+| LZString Compress | implemented |
+| LZString Decompress | implemented |
 | Label | implemented |
 | Levenshtein Distance | implemented |
 | Lorenz | missing |
@@ -284,7 +284,7 @@ registered as placeholders and therefore fail explicitly with
 | Mean | implemented |
 | Median | implemented |
 | Merge | missing |
-| Microsoft Script Decoder | missing |
+| Microsoft Script Decoder | implemented |
 | Modular Exponentiation | implemented |
 | Modular Inverse | implemented |
 | Multiple Bombe | missing |
@@ -344,12 +344,12 @@ registered as placeholders and therefore fail explicitly with
 | Public Key from Certificate | missing |
 | Public Key from Private Key | missing |
 | RAKE | missing |
-| RC2 Decrypt | missing |
-| RC2 Encrypt | missing |
+| RC2 Decrypt | implemented |
+| RC2 Encrypt | implemented |
 | RC4 | implemented |
 | RC4 Drop | implemented |
-| RC6 Decrypt | missing |
-| RC6 Encrypt | missing |
+| RC6 Decrypt | implemented |
+| RC6 Encrypt | implemented |
 | RIPEMD | implemented |
 | ROR13 | implemented |
 | ROT13 | implemented |
@@ -394,8 +394,8 @@ registered as placeholders and therefore fail explicitly with
 | SM2 Decrypt | missing |
 | SM2 Encrypt | missing |
 | SM3 | implemented |
-| SM4 Decrypt | missing |
-| SM4 Encrypt | missing |
+| SM4 Decrypt | implemented |
+| SM4 Encrypt | implemented |
 | SQL Beautify | implemented |
 | SQL Minify | implemented |
 | SSDEEP | missing |
@@ -442,7 +442,7 @@ registered as placeholders and therefore fail explicitly with
 | Take nth bytes | implemented |
 | Tar | implemented |
 | Template | implemented |
-| Text Encoding Brute Force | missing |
+| Text Encoding Brute Force | implemented |
 | Text-Integer Conversion | implemented |
 | To BCD | implemented |
 | To Base | implemented |
@@ -479,8 +479,8 @@ registered as placeholders and therefore fail explicitly with
 | To UNIX Timestamp | implemented |
 | To Upper case | implemented |
 | Translate DateTime Format | implemented |
-| Triple DES Decrypt | missing |
-| Triple DES Encrypt | missing |
+| Triple DES Decrypt | implemented |
+| Triple DES Encrypt | implemented |
 | Twofish Decrypt | missing |
 | Twofish Encrypt | missing |
 | Typex | missing |
@@ -518,4 +518,3 @@ registered as placeholders and therefore fail explicitly with
 | Zip | implemented |
 | Zlib Deflate | implemented |
 | Zlib Inflate | implemented |
-

@@ -11,8 +11,8 @@ def test_pinned_upstream_inventory_is_explicit() -> None:
     assert report.target_version == TARGET_CYBERCHEF_VERSION == "11.3.0"
     assert report.target_commit == TARGET_CYBERCHEF_COMMIT
     assert report.upstream_count == 502
-    assert len(report.implemented) == len(list_operations()) == 337
-    assert len(report.missing) == 165
+    assert len(report.implemented) == len(list_operations()) == 368
+    assert len(report.missing) == 134
     assert report.unexpected == ()
-    assert report.coverage == 337 / 502
+    assert report.coverage == 368 / 502
     assert not report.complete

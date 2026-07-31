@@ -35,7 +35,7 @@ result = Chef().bake(compressed_data, recipe)
 The pinned reference is CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
-This alpha release registers 337 of the 502 upstream operation names (67.1%).
+This alpha release registers 368 of the 502 upstream operation names (73.3%).
 It is not yet a complete CyberChef replacement. The exhaustive name-by-name
 matrix is in [COMPATIBILITY.md](COMPATIBILITY.md). Unsupported operations are
 not silent stubs: recipes using them raise `UnknownOperationError`.
