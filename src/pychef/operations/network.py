@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
-from urllib.parse import parse_qs, urlparse
+import socket
+import urllib.error
+import urllib.request
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from ..registry import operation
 from ..types import Args, Data, to_text
 from ._utils import arg, char_rep, require_int
+
+_HTTP_METHODS = {"GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "CONNECT", "TRACE", "OPTIONS"}
+_MAX_HTTP_RESPONSE = 64 * 1024 * 1024
 
 _IPV4_CANDIDATE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?(?![\d.])")
 _IPV6_CANDIDATE = re.compile(
@@ -305,3 +312,115 @@ def parse_uri(value: Data, _args: Args) -> str:
     if parsed.fragment:
         output += f"Hash:\t\t#{parsed.fragment}\n"
     return output
+
+
+def _safe_public_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("URL must use HTTP or HTTPS and contain a hostname")
+    if parsed.username or parsed.password:
+        raise ValueError("Credentials embedded in URLs are not permitted")
+    try:
+        addresses = {
+            ipaddress.ip_address(item[4][0])
+            for item in socket.getaddrinfo(
+                parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM
+            )
+        }
+    except socket.gaierror as exc:
+        raise ValueError(f"Could not resolve HTTP host: {parsed.hostname}") from exc
+    for address in addresses:
+        if not address.is_global:
+            raise ValueError(
+                "Requests to local, private, reserved, or non-global addresses are blocked"
+            )
+    return value
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        file_pointer: object,
+        code: int,
+        message: str,
+        headers: object,
+        new_url: str,
+    ) -> urllib.request.Request | None:
+        _safe_public_url(new_url)
+        return super().redirect_request(request, file_pointer, code, message, headers, new_url)
+
+
+def _request(
+    url: str, method: str, headers: dict[str, str], body: bytes | None
+) -> tuple[int, str, object, bytes]:
+    _safe_public_url(url)
+    request = urllib.request.Request(url, data=body, headers=headers, method=method)
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
+    try:
+        response = opener.open(request, timeout=30)
+    except urllib.error.HTTPError as exc:
+        response = exc
+    with response:
+        data = response.read(_MAX_HTTP_RESPONSE + 1)
+        if len(data) > _MAX_HTTP_RESPONSE:
+            raise ValueError("HTTP response exceeded the 64 MiB safety limit")
+        return response.status, response.reason, response.headers, data
+
+
+@operation("HTTP request", category="Networking")
+def http_request(value: Data, args: Args) -> Data:
+    method = str(arg(args, 0, "GET")).upper()
+    url = str(arg(args, 1, ""))
+    if not url:
+        return ""
+    if method not in _HTTP_METHODS:
+        raise ValueError(f"Unsupported HTTP method: {method}")
+    headers: dict[str, str] = {}
+    for line in str(arg(args, 2, "")).splitlines():
+        if not line.strip():
+            continue
+        name, separator, header_value = line.partition(":")
+        if not separator or not name.strip() or "\n" in header_value or "\r" in header_value:
+            raise ValueError(f"Could not parse HTTP header line: {line}")
+        if name.strip().lower() in {"host", "content-length", "transfer-encoding"}:
+            raise ValueError(f"Unsafe managed HTTP header: {name.strip()}")
+        headers[name.strip()] = header_value.strip()
+    body = None if method in {"GET", "HEAD"} else to_text(value).encode()
+    status, reason, response_headers, data = _request(url, method, headers, body)
+    text = data.decode("utf-8", "replace")
+    if not bool(arg(args, 4, False)):
+        return text
+    exposed = "".join(f"    {name}: {item}\n" for name, item in response_headers.items())
+    return f"####\n  Status: {status} {reason}\n  Exposed headers:\n{exposed}####\n\n{text}"
+
+
+@operation("DNS over HTTPS", category="Networking")
+def dns_over_https(value: Data, args: Args) -> Data:
+    resolver = str(arg(args, 0, "https://dns.google.com/resolve"))
+    request_type = str(arg(args, 1, "A")).upper()
+    answer_only = bool(arg(args, 2, False))
+    disable_dnssec = bool(arg(args, 3, False))
+    domain = to_text(value).strip().encode("idna").decode()
+    if len(domain) > 253 or not re.fullmatch(
+        r"(?:[A-Za-z0-9_*-]{1,63}\.)*[A-Za-z0-9_*-]{1,63}\.?", domain
+    ):
+        raise ValueError("Invalid DNS name")
+    if not re.fullmatch(r"[A-Z0-9-]{1,16}", request_type):
+        raise ValueError("Invalid DNS record type")
+    separator = "&" if "?" in resolver else "?"
+    url = (
+        resolver
+        + separator
+        + urlencode({"name": domain, "type": request_type, "cd": str(disable_dnssec).lower()})
+    )
+    status, _, _, body = _request(url, "GET", {"Accept": "application/dns-json"}, None)
+    if status < 200 or status >= 300:
+        raise ValueError(f"DNS-over-HTTPS resolver returned HTTP {status}")
+    try:
+        result = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise ValueError("DNS-over-HTTPS resolver returned invalid JSON") from exc
+    if answer_only:
+        result = [answer.get("data") for answer in result.get("Answer", [])]
+    return json.dumps(result, ensure_ascii=False, indent=2)
