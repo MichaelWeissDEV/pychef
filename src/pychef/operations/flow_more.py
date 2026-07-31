@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import math
 import re
@@ -30,7 +31,7 @@ def automated_validation_test_op(value: Data, args: Args) -> Data:
     toggle = arg(args, 4, {"option": "Option A", "string": "test"})
     option = str(arg(args, 5, "Option 1"))
     selector = str(arg(args, 6, "Option 1"))
-    if isinstance(integer, float) and not integer.is_integer() or not 5 <= int(integer) <= 10:
+    if (isinstance(integer, float) and not integer.is_integer()) or not 5 <= int(integer) <= 10:
         raise ValueError("Integer Number must be an integer between 5 and 10")
     if not 1.5 <= float(real) <= 5.5:
         raise ValueError("Real Number must be between 1.5 and 5.5")
@@ -74,15 +75,18 @@ def magic(value: Data, args: Args) -> Data:
 
     text = to_text(value).strip()
     if re.fullmatch(r"(?:[0-9a-fA-F]{2}\s*)+", text):
-        try:
+        with contextlib.suppress(ValueError):
             add("From Hex", bytes.fromhex(text))
-        except ValueError:
-            pass
     if re.fullmatch(r"[A-Za-z0-9+/\s]+={0,2}", text) and len(text.replace(" ", "")) % 4 == 0:
-        try:
+        with contextlib.suppress(ValueError):
             add("From Base64", base64.b64decode(text, validate=True))
-        except ValueError:
-            pass
     if data.startswith(b"\x89PNG"):
-        suggestions.append({"recipe": [{"op": "Render Image", "args": []}], "data": "PNG image", "entropy": _entropy(data), "isUTF8": False})
+        suggestions.append(
+            {
+                "recipe": [{"op": "Render Image", "args": []}],
+                "data": "PNG image",
+                "entropy": _entropy(data),
+                "isUTF8": False,
+            }
+        )
     return json.dumps(suggestions, ensure_ascii=False, indent=2)

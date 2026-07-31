@@ -7,7 +7,6 @@ import json
 import re
 import struct
 import zlib
-from dataclasses import dataclass
 from typing import Any
 
 from ..registry import operation
@@ -83,7 +82,9 @@ def _amf0_encode(value: Any) -> bytes:
         width = 2 if marker == b"\x02" else 4
         return marker + len(encoded).to_bytes(width, "big") + encoded
     if isinstance(value, list):
-        return b"\x0a" + len(value).to_bytes(4, "big") + b"".join(_amf0_encode(item) for item in value)
+        return (
+            b"\x0a" + len(value).to_bytes(4, "big") + b"".join(_amf0_encode(item) for item in value)
+        )
     if isinstance(value, dict):
         payload = bytearray(b"\x03")
         for key, item in value.items():
@@ -197,8 +198,11 @@ def _amf3_encode(value: Any) -> bytes:
     if isinstance(value, str):
         return b"\x06" + _amf3_string_encode(value)
     if isinstance(value, list):
-        return b"\x09" + _u29_encode((len(value) << 1) | 1) + b"\x01" + b"".join(
-            _amf3_encode(item) for item in value
+        return (
+            b"\x09"
+            + _u29_encode((len(value) << 1) | 1)
+            + b"\x01"
+            + b"".join(_amf3_encode(item) for item in value)
         )
     if isinstance(value, dict):
         payload = bytearray(b"\x0a\x0b\x01")
@@ -245,9 +249,7 @@ def _varint_encode(value: int) -> bytes:
 
 def _proto_schema(schema: str) -> dict[int, tuple[str, str, bool]]:
     fields: dict[int, tuple[str, str, bool]] = {}
-    pattern = re.compile(
-        r"\b(?:(repeated|required|optional)\s+)?([.\w]+)\s+(\w+)\s*=\s*(\d+)"
-    )
+    pattern = re.compile(r"\b(?:(repeated|required|optional)\s+)?([.\w]+)\s+(\w+)\s*=\s*(\d+)")
     for qualifier, field_type, name, number in pattern.findall(schema):
         fields[int(number)] = (name, field_type, qualifier == "repeated")
     return fields
@@ -269,7 +271,11 @@ def _proto_decode(data: bytes, schema: str, show_types: bool) -> dict[str, Any]:
                 item = bool(item)
         elif wire == 1:
             raw = reader.take(8)
-            item = struct.unpack("<d", raw)[0] if field_type == "double" else int.from_bytes(raw, "little")
+            item = (
+                struct.unpack("<d", raw)[0]
+                if field_type == "double"
+                else int.from_bytes(raw, "little")
+            )
         elif wire == 2:
             raw = reader.take(_varint(reader))
             if field_type == "string":
@@ -280,7 +286,11 @@ def _proto_decode(data: bytes, schema: str, show_types: bool) -> dict[str, Any]:
                 item = _proto_decode(raw, schema, show_types)
         elif wire == 5:
             raw = reader.take(4)
-            item = struct.unpack("<f", raw)[0] if field_type == "float" else int.from_bytes(raw, "little")
+            item = (
+                struct.unpack("<f", raw)[0]
+                if field_type == "float"
+                else int.from_bytes(raw, "little")
+            )
         else:
             raise ValueError(f"Unsupported protobuf wire type: {wire}")
         key = f"{name} ({field_type})" if show_types else name
@@ -299,7 +309,8 @@ def _proto_encode_item(number: int, field_type: str, value: Any) -> bytes:
         if field_type == "bytes":
             raw = base64.b64decode(str(value))
         elif isinstance(value, dict):
-            raw = b""  # Nested messages require their own schema and are represented as empty if unknown.
+            # A nested message needs a separate schema; keep unknown nested values empty.
+            raw = b""
         else:
             raw = str(value).encode()
         return _varint_encode((number << 3) | 2) + _varint_encode(len(raw)) + raw
@@ -324,7 +335,10 @@ def protobuf_decode(value: Data, args: Args) -> Data:
 def protobuf_encode(value: Data, args: Args) -> Data:
     schema = str(arg(args, 0, ""))
     fields = _proto_schema(schema)
-    by_name = {name: (number, field_type, repeated) for number, (name, field_type, repeated) in fields.items()}
+    by_name = {
+        name: (number, field_type, repeated)
+        for number, (name, field_type, repeated) in fields.items()
+    }
     parsed = _json_input(value)
     if not isinstance(parsed, dict):
         raise ValueError("Protobuf input must be a JSON object")
@@ -389,7 +403,9 @@ def _avro_value(reader: _Reader, schema: Any) -> Any:
         return struct.unpack("<d", reader.take(8))[0]
     if schema in {"bytes", "string"}:
         raw = reader.take(_avro_long(reader))
-        return raw.decode("utf-8", "replace") if schema == "string" else base64.b64encode(raw).decode()
+        return (
+            raw.decode("utf-8", "replace") if schema == "string" else base64.b64encode(raw).decode()
+        )
     raise ValueError(f"Unsupported Avro schema type: {schema}")
 
 
@@ -586,14 +602,24 @@ def extract_audio_metadata(value: Data, args: Args) -> Data:
             errors.append({"stage": "parse", "message": str(exc)})
     return _json_output(
         {
-            "artifact": {"filename": filename, "byte_length": len(data), "container": {"type": container, "mime": mime}},
+            "artifact": {
+                "filename": filename,
+                "byte_length": len(data),
+                "container": {"type": container, "mime": mime},
+            },
             "tags": tags,
             "errors": errors,
         }
     )
 
 
-_EXIF_TAGS = {0x010F: "Make", 0x0110: "Model", 0x0112: "Orientation", 0x0131: "Software", 0x0132: "DateTime"}
+_EXIF_TAGS = {
+    0x010F: "Make",
+    0x0110: "Model",
+    0x0112: "Orientation",
+    0x0131: "Software",
+    0x0132: "DateTime",
+}
 
 
 def _jpeg_exif(data: bytes) -> bytes | None:
@@ -628,7 +654,11 @@ def _exif_tags(tiff: bytes) -> dict[str, Any]:
         kind = int.from_bytes(entry[2:4], order)
         amount = int.from_bytes(entry[4:8], order)
         length = sizes.get(kind, 1) * amount
-        raw = entry[8:12][:length] if length <= 4 else tiff[int.from_bytes(entry[8:12], order) :][:length]
+        raw = (
+            entry[8:12][:length]
+            if length <= 4
+            else tiff[int.from_bytes(entry[8:12], order) :][:length]
+        )
         if kind == 2:
             item: Any = raw.rstrip(b"\0").decode("utf-8", "replace")
         elif kind in {3, 4}:
@@ -647,7 +677,9 @@ def extract_exif(value: Data, args: Args) -> Data:
     if tiff is None:
         raise ValueError("Could not extract EXIF data from image: Exif not found.")
     tags = _exif_tags(tiff)
-    return f"Found {len(tags)} tags.\n\n" + "\n".join(f"{key}: {item}" for key, item in tags.items())
+    return f"Found {len(tags)} tags.\n\n" + "\n".join(
+        f"{key}: {item}" for key, item in tags.items()
+    )
 
 
 @operation("Remove EXIF", category="Image")

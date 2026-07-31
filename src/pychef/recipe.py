@@ -70,7 +70,7 @@ class Recipe:
                     pattern = str(step.args[0] if step.args else "")
                     invert = bool(step.args[1] if len(step.args) > 1 else False)
                     matched = bool(pattern and re.search(pattern, to_text(value)))
-                    should_jump = matched != invert
+                    should_jump = bool(pattern) and matched != invert
                     label = str(step.args[2] if len(step.args) > 2 else "")
                     maximum = int(step.args[3] if len(step.args) > 3 else 10)
                 else:
@@ -98,7 +98,7 @@ class Recipe:
                 continue
             if step.op == "Register":
                 pattern = str(step.args[0] if step.args else r"([\s\S]*)")
-                flags = (re.IGNORECASE if len(step.args) < 2 or step.args[1] else 0)
+                flags = re.IGNORECASE if len(step.args) < 2 or step.args[1] else 0
                 flags |= re.MULTILINE if len(step.args) > 2 and step.args[2] else 0
                 flags |= re.DOTALL if len(step.args) > 3 and step.args[3] else 0
                 match = re.search(pattern, to_text(value), flags)
@@ -106,7 +106,8 @@ class Recipe:
                     registers = match.groups()
                     for position in range(index + 1, len(steps)):
                         new_args = tuple(
-                            _replace_registers(argument, registers) for argument in steps[position].args
+                            _replace_registers(argument, registers)
+                            for argument in steps[position].args
                         )
                         steps[position] = replace(steps[position], args=new_args)
                 progress = index + 1
@@ -115,14 +116,24 @@ class Recipe:
             if step.op in {"Fork", "Subsection"}:
                 merge_index = _matching_merge(steps, index)
                 substeps = steps[index + 1 : merge_index]
-                ignore_errors = bool(step.args[2 if step.op == "Fork" else 3]) if len(step.args) > (2 if step.op == "Fork" else 3) else False
+                ignore_errors = (
+                    bool(step.args[2 if step.op == "Fork" else 3])
+                    if len(step.args) > (2 if step.op == "Fork" else 3)
+                    else False
+                )
                 if step.op == "Fork":
                     split_delimiter = _binary_delimiter(str(step.args[0] if step.args else "\n"))
-                    merge_delimiter = _binary_delimiter(str(step.args[1] if len(step.args) > 1 else "\n"))
+                    merge_delimiter = _binary_delimiter(
+                        str(step.args[1] if len(step.args) > 1 else "\n")
+                    )
                     outputs = []
                     for part in to_text(value).split(split_delimiter) if value else []:
                         try:
-                            outputs.append(Recipe(substeps).execute(part, operation_registry=operation_registry)[0])
+                            outputs.append(
+                                Recipe(substeps).execute(
+                                    part, operation_registry=operation_registry
+                                )[0]
+                            )
                         except Exception:
                             if not ignore_errors:
                                 raise
