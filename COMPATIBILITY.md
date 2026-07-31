@@ -4,9 +4,9 @@ This inventory is pinned to CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
 - Upstream operations: 502
-- Implemented operation names: 368
-- Missing operation names: 134
-- Name coverage: 73.3%
+- Implemented operation names: 382
+- Missing operation names: 120
+- Name coverage: 76.1%
 
 “Implemented” means that a callable operation is registered. It does not claim
 bit-for-bit parity for every option combination. The pytest suite contains the
@@ -36,29 +36,29 @@ registered as placeholders and therefore fail explicitly with
 | Analyse hash | implemented |
 | Argon2 | missing |
 | Argon2 compare | missing |
-| Ascon Decrypt | missing |
-| Ascon Encrypt | missing |
-| Ascon Hash | missing |
-| Ascon MAC | missing |
+| Ascon Decrypt | implemented |
+| Ascon Encrypt | implemented |
+| Ascon Hash | implemented |
+| Ascon MAC | implemented |
 | Atbash Cipher | implemented |
 | Automated Validation Test Op | missing |
 | Avro to JSON | missing |
 | BLAKE2b | implemented |
 | BLAKE2s | implemented |
-| BLAKE3 | missing |
+| BLAKE3 | implemented |
 | BSON deserialise | implemented |
 | BSON serialise | implemented |
 | Bacon Cipher Decode | implemented |
 | Bacon Cipher Encode | implemented |
 | Bcrypt | missing |
 | Bcrypt compare | missing |
-| Bcrypt parse | missing |
+| Bcrypt parse | implemented |
 | Bifid Cipher Decode | implemented |
 | Bifid Cipher Encode | implemented |
 | Bit shift left | implemented |
 | Bit shift right | implemented |
-| Blowfish Decrypt | missing |
-| Blowfish Encrypt | missing |
+| Blowfish Decrypt | implemented |
+| Blowfish Encrypt | implemented |
 | Blur Image | missing |
 | Bombe | missing |
 | Bzip2 Compress | implemented |
@@ -123,7 +123,7 @@ registered as placeholders and therefore fail explicitly with
 | Drop bytes | implemented |
 | Drop nth bytes | implemented |
 | ECDSA Sign | missing |
-| ECDSA Signature Conversion | missing |
+| ECDSA Signature Conversion | implemented |
 | ECDSA Verify | missing |
 | ELF Info | implemented |
 | Encode NetBIOS Name | implemented |
@@ -150,8 +150,8 @@ registered as placeholders and therefore fail explicitly with
 | Extract file paths | implemented |
 | Extract hashes | implemented |
 | Fang URL | implemented |
-| Fernet Decrypt | missing |
-| Fernet Encrypt | missing |
+| Fernet Decrypt | implemented |
+| Fernet Encrypt | implemented |
 | File Tree | missing |
 | Filter | implemented |
 | Find / Replace | implemented |
@@ -340,10 +340,10 @@ registered as placeholders and therefore fail explicitly with
 | Protobuf Encode | missing |
 | Pseudo-Random Integer Generator | implemented |
 | Pseudo-Random Number Generator | implemented |
-| Pseudo-Random Prime Generator | missing |
+| Pseudo-Random Prime Generator | implemented |
 | Public Key from Certificate | missing |
 | Public Key from Private Key | missing |
-| RAKE | missing |
+| RAKE | implemented |
 | RC2 Decrypt | implemented |
 | RC2 Encrypt | implemented |
 | RC4 | implemented |
@@ -361,7 +361,7 @@ registered as placeholders and therefore fail explicitly with
 | RSA Encrypt | missing |
 | RSA Sign | missing |
 | RSA Verify | missing |
-| Rabbit | missing |
+| Rabbit | implemented |
 | Rail Fence Cipher Decode | implemented |
 | Rail Fence Cipher Encode | implemented |
 | Randomize Colour Palette | missing |

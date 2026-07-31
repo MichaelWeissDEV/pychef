@@ -40,10 +40,18 @@ def test_ascon_mac_official_vectors(message: bytes, expected: str) -> None:
 
 
 def test_ascon_mac_toggle_formats_and_key_validation() -> None:
-    assert bake(
-        b"",
-        [{"op": "Ascon MAC", "args": [{"option": "Base64", "string": "AAECAwQFBgcICQoLDA0ODw=="}]}],
-    ) == "eac9d74bbedf8bf1eba2862b26aa6d39"
+    assert (
+        bake(
+            b"",
+            [
+                {
+                    "op": "Ascon MAC",
+                    "args": [{"option": "Base64", "string": "AAECAwQFBgcICQoLDA0ODw=="}],
+                }
+            ],
+        )
+        == "eac9d74bbedf8bf1eba2862b26aa6d39"
+    )
     with pytest.raises(OperationError, match="Invalid key length: 8 bytes"):
         bake(b"test", [{"op": "Ascon MAC", "args": [{"option": "Hex", "string": "00" * 8}]}])
 

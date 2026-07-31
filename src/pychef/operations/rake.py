@@ -61,6 +61,6 @@ def rake(value: Data, args: Args) -> Data:
     scores.sort(key=lambda item: item[0], reverse=True)
     lines = ["Scores: , Keywords: "]
     for score, phrase in scores:
-        rendered = str(int(score)) if score.is_integer() else str(score)
+        rendered = str(int(score)) if score == int(score) else str(score)
         lines.append(f"{rendered}, {phrase}")
     return "\n".join(lines)

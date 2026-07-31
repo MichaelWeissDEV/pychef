@@ -16,7 +16,16 @@ _CHUNK_END = 2
 _PARENT = 4
 _ROOT = 8
 _KEYED_HASH = 16
-_IV = (0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19)
+_IV = (
+    0x6A09E667,
+    0xBB67AE85,
+    0x3C6EF372,
+    0xA54FF53A,
+    0x510E527F,
+    0x9B05688C,
+    0x1F83D9AB,
+    0x5BE0CD19,
+)
 _MESSAGE_PERMUTATION = (2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8)
 
 
@@ -53,12 +62,16 @@ def _compress(
     block_length: int,
     flags: int,
 ) -> tuple[int, ...]:
-    state = list(chaining_value) + list(_IV[:4]) + [
-        counter & _MASK32,
-        (counter >> 32) & _MASK32,
-        block_length,
-        flags,
-    ]
+    state = (
+        list(chaining_value)
+        + list(_IV[:4])
+        + [
+            counter & _MASK32,
+            (counter >> 32) & _MASK32,
+            block_length,
+            flags,
+        ]
+    )
     message = block_words
     for round_number in range(7):
         _round(state, message)
@@ -72,7 +85,10 @@ def _compress(
 
 def _words(block: bytes) -> tuple[int, ...]:
     padded = block.ljust(_BLOCK_LEN, b"\0")
-    return tuple(int.from_bytes(padded[position : position + 4], "little") for position in range(0, _BLOCK_LEN, 4))
+    return tuple(
+        int.from_bytes(padded[position : position + 4], "little")
+        for position in range(0, _BLOCK_LEN, 4)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +144,9 @@ def _chunk_output(
         )[:8]
     final_block = chunk[(block_count - 1) * _BLOCK_LEN :]
     final_flags = flags | _CHUNK_END | (_CHUNK_START if block_count == 1 else 0)
-    return _Output(chaining_value, _words(final_block), chunk_counter, len(final_block), final_flags)
+    return _Output(
+        chaining_value, _words(final_block), chunk_counter, len(final_block), final_flags
+    )
 
 
 def _parent_output(
@@ -147,11 +165,17 @@ def _parent_output(
 
 
 def _hash(data: bytes, length: int, key: bytes | None = None) -> bytes:
-    key_words = _IV if key is None else tuple(
-        int.from_bytes(key[position : position + 4], "little") for position in range(0, 32, 4)
+    key_words = (
+        _IV
+        if key is None
+        else tuple(
+            int.from_bytes(key[position : position + 4], "little") for position in range(0, 32, 4)
+        )
     )
     flags = 0 if key is None else _KEYED_HASH
-    chunks = [data[position : position + _CHUNK_LEN] for position in range(0, len(data), _CHUNK_LEN)]
+    chunks = [
+        data[position : position + _CHUNK_LEN] for position in range(0, len(data), _CHUNK_LEN)
+    ]
     if not chunks:
         chunks = [b""]
     outputs = [

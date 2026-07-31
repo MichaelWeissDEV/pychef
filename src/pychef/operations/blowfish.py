@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import struct
+from collections.abc import Sequence
 from functools import lru_cache
 
 from ..registry import operation
@@ -121,7 +122,7 @@ _INITIAL_S = (
 _SubstitutionBoxes = tuple[tuple[int, ...], ...]
 
 
-def _function(value: int, boxes: _SubstitutionBoxes) -> int:
+def _function(value: int, boxes: Sequence[Sequence[int]]) -> int:
     first = boxes[0][(value >> 24) & 0xFF]
     second = boxes[1][(value >> 16) & 0xFF]
     third = boxes[2][(value >> 8) & 0xFF]
@@ -285,4 +286,3 @@ def blowfish_encrypt(value: Data, args: Args) -> Data:
 @operation("Blowfish Decrypt", category="Ciphers")
 def blowfish_decrypt(value: Data, args: Args) -> Data:
     return _blowfish(value, args, decrypting=True)
-

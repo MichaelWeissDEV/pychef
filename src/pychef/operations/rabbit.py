@@ -44,8 +44,7 @@ class _RabbitState:
         for _ in range(4):
             self._next_state()
         self.counters = [
-            counter ^ self.state[(index + 4) % 8]
-            for index, counter in enumerate(self.counters)
+            counter ^ self.state[(index + 4) % 8] for index, counter in enumerate(self.counters)
         ]
         if iv:
             self._apply_iv(iv)
@@ -64,21 +63,22 @@ class _RabbitState:
             square = value * value
             nonlinear.append((square ^ (square >> 32)) & _MASK32)
         self.state = [
-            (nonlinear[0] + _rotate_left(nonlinear[7], 16) + _rotate_left(nonlinear[6], 16)) & _MASK32,
+            (nonlinear[0] + _rotate_left(nonlinear[7], 16) + _rotate_left(nonlinear[6], 16))
+            & _MASK32,
             (nonlinear[1] + _rotate_left(nonlinear[0], 8) + nonlinear[7]) & _MASK32,
-            (nonlinear[2] + _rotate_left(nonlinear[1], 16) + _rotate_left(nonlinear[0], 16)) & _MASK32,
+            (nonlinear[2] + _rotate_left(nonlinear[1], 16) + _rotate_left(nonlinear[0], 16))
+            & _MASK32,
             (nonlinear[3] + _rotate_left(nonlinear[2], 8) + nonlinear[1]) & _MASK32,
-            (nonlinear[4] + _rotate_left(nonlinear[3], 16) + _rotate_left(nonlinear[2], 16)) & _MASK32,
+            (nonlinear[4] + _rotate_left(nonlinear[3], 16) + _rotate_left(nonlinear[2], 16))
+            & _MASK32,
             (nonlinear[5] + _rotate_left(nonlinear[4], 8) + nonlinear[3]) & _MASK32,
-            (nonlinear[6] + _rotate_left(nonlinear[5], 16) + _rotate_left(nonlinear[4], 16)) & _MASK32,
+            (nonlinear[6] + _rotate_left(nonlinear[5], 16) + _rotate_left(nonlinear[4], 16))
+            & _MASK32,
             (nonlinear[7] + _rotate_left(nonlinear[6], 8) + nonlinear[5]) & _MASK32,
         ]
 
     def _iv_word(self, iv: bytes, a: int, b: int, c: int, d: int) -> int:
-        if self.little_endian:
-            indexes = (a, b, c, d)
-        else:
-            indexes = (7 - a, 7 - b, 7 - c, 7 - d)
+        indexes = (a, b, c, d) if self.little_endian else (7 - a, 7 - b, 7 - c, 7 - d)
         return sum(iv[index] << shift for index, shift in zip(indexes, (24, 16, 8, 0), strict=True))
 
     def _apply_iv(self, iv: bytes) -> None:
@@ -124,7 +124,7 @@ def _crypt(data: bytes, key: bytes, iv: bytes, *, little_endian: bool) -> bytes:
         stream = state.extract()
         if not little_endian:
             stream = stream[-len(remaining) :]
-        output.extend(byte ^ key_byte for byte, key_byte in zip(remaining, stream))
+        output.extend(byte ^ key_byte for byte, key_byte in zip(remaining, stream, strict=False))
     return bytes(output)
 
 

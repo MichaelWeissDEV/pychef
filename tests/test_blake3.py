@@ -54,10 +54,13 @@ def test_blake3_official_binary_keyed_vector() -> None:
         "305abf86d874e34b4995b788e37a823491f25127a502fe0704baa6bfdf04e76c1"
         "3276"
     )
-    assert bake(
-        bytes.fromhex("0001020304050607"),
-        [{"op": "BLAKE3", "args": [131, "whats the Elvish word for friend"]}],
-    ) == expected
+    assert (
+        bake(
+            bytes.fromhex("0001020304050607"),
+            [{"op": "BLAKE3", "args": [131, "whats the Elvish word for friend"]}],
+        )
+        == expected
+    )
 
 
 def test_blake3_extended_output_and_validation() -> None:

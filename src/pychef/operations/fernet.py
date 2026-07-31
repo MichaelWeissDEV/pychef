@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import secrets
@@ -19,7 +20,7 @@ _VERSION = 0x80
 def _secret(value: str) -> bytes:
     try:
         decoded = base64.b64decode(value, altchars=b"-_", validate=True)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise ValueError("Error: Secret must be 32 url-safe base64-encoded bytes.") from exc
     if len(decoded) != 32:
         raise ValueError("Error: Secret must be 32 url-safe base64-encoded bytes.")
@@ -29,7 +30,7 @@ def _secret(value: str) -> bytes:
 def _token_bytes(value: Data) -> bytes:
     try:
         return base64.b64decode(to_bytes(value), altchars=b"-_", validate=True)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise ValueError("Error: Invalid token") from exc
 
 

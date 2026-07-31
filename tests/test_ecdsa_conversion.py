@@ -46,21 +46,32 @@ def test_ecdsa_signature_conversion_all_explicit_formats(
     output_format: str,
     expected: str,
 ) -> None:
-    assert bake(
-        value,
-        [{"op": "ECDSA Signature Conversion", "args": [input_format, output_format]}],
-    ) == expected
+    assert (
+        bake(
+            value,
+            [{"op": "ECDSA Signature Conversion", "args": [input_format, output_format]}],
+        )
+        == expected
+    )
 
 
 @pytest.mark.parametrize("value", [_ASN1, _P1363, _JWS, _JSON])
 def test_ecdsa_signature_conversion_auto_detection(value: str) -> None:
-    assert bake(value, [{"op": "ECDSA Signature Conversion", "args": ["Auto", "P1363 HEX"]}]) == _P1363
+    assert (
+        bake(value, [{"op": "ECDSA Signature Conversion", "args": ["Auto", "P1363 HEX"]}]) == _P1363
+    )
 
 
 def test_ecdsa_signature_conversion_validation() -> None:
     with pytest.raises(OperationError, match="could not be detected"):
-        bake("not a signature", [{"op": "ECDSA Signature Conversion", "args": ["Auto", "ASN.1 HEX"]}])
+        bake(
+            "not a signature", [{"op": "ECDSA Signature Conversion", "args": ["Auto", "ASN.1 HEX"]}]
+        )
     with pytest.raises(OperationError, match='No "r"'):
-        bake('{"s":"01"}', [{"op": "ECDSA Signature Conversion", "args": ["Raw JSON", "ASN.1 HEX"]}])
+        bake(
+            '{"s":"01"}', [{"op": "ECDSA Signature Conversion", "args": ["Raw JSON", "ASN.1 HEX"]}]
+        )
     with pytest.raises(OperationError, match='No "s"'):
-        bake('{"r":"01"}', [{"op": "ECDSA Signature Conversion", "args": ["Raw JSON", "ASN.1 HEX"]}])
+        bake(
+            '{"r":"01"}', [{"op": "ECDSA Signature Conversion", "args": ["Raw JSON", "ASN.1 HEX"]}]
+        )

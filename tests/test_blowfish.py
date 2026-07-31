@@ -81,8 +81,7 @@ def test_blowfish_official_binary_vector() -> None:
             "8bf088ee3e07287e3f36cf2e45f9c7e6",
         ),
         (
-            "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-            "deadbeefdeadbeefdead",
+            "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdead",
             "19f5a68145b34321cfba72226b0f33922ce44dd6e7869fe328db64faae156471"
             "216f12ed2a37fd0bdd7cebf867b3cff0",
         ),
@@ -113,7 +112,10 @@ def test_blowfish_toggle_formats_raw_output_and_validation() -> None:
             [
                 {
                     "op": "Blowfish Encrypt",
-                    "args": [{"option": "Hex", "string": "00010203"}, {"option": "Hex", "string": ""}],
+                    "args": [
+                        {"option": "Hex", "string": "00010203"},
+                        {"option": "Hex", "string": ""},
+                    ],
                 }
             ],
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import re
 
@@ -86,7 +87,7 @@ def _from_p1363(value: bytes) -> tuple[bytes, bytes]:
 def _base64url_decode(value: str) -> bytes:
     try:
         return base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise ValueError("Invalid JSON Web Signature") from exc
 
 

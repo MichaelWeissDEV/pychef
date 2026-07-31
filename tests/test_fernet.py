@@ -17,7 +17,13 @@ def test_fernet_official_decrypt_vector() -> None:
         "gAAAAABce-Tycae8klRxhDX2uenJ-uwV8-A1XZ2HRnfOXlNzkKKfRxviNLlgtemh"
         "T_fd1Fw5P_zFUAjd69zaJBQyWppAxVV00SExe77ql8c5n62HYJOnoIU="
     )
-    assert bake(token, [{"op": "Fernet Decrypt", "args": ["VGhpc0lzVGhpcnR5VHdvQ2hhcmFjdGVyc0xvbmdLZXk="]}]) == _MESSAGE
+    assert (
+        bake(
+            token,
+            [{"op": "Fernet Decrypt", "args": ["VGhpc0lzVGhpcnR5VHdvQ2hhcmFjdGVyc0xvbmdLZXk="]}],
+        )
+        == _MESSAGE
+    )
 
 
 def test_fernet_encrypt_format_and_round_trip() -> None:
