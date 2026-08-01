@@ -3,9 +3,9 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pychef"
+name = "py-chef"
 version = "0.1.0"
-description = "A pure-Python implementation of CyberChef recipes and operations"
+description = "Pure-Python CyberChef-compatible recipes, pipelines, and CTF data tools"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -14,19 +14,28 @@ authors = [{ name = "PyChef contributors" }]
 keywords = ["cyberchef", "ctf", "pcap", "encoding", "cryptography", "data-transformation"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: Apache Software License",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Security :: Cryptography",
+  "Topic :: Software Development :: Libraries :: Python Modules",
   "Typing :: Typed",
 ]
 dependencies = []
 
 [project.urls]
-Repository = "https://github.com/michaelweiss/pychef"
+Homepage = "https://github.com/michaelweiss/pychef"
+Source = "https://github.com/michaelweiss/pychef"
+Issues = "https://github.com/michaelweiss/pychef/issues"
+Changelog = "https://github.com/michaelweiss/pychef/blob/main/CHANGELOG.md"
 Upstream = "https://github.com/gchq/CyberChef"
 
 [dependency-groups]
@@ -35,11 +44,37 @@ dev = [
   "pytest>=8.4",
   "pytest-cov>=6.2",
   "ruff>=0.12",
+  "check-wheel-contents>=0.6",
+  "twine>=6.2",
   "ty>=0.0.1a16",
+  "validate-pyproject>=0.24",
 ]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pychef"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/CHANGELOG.md",
+  "/COMPATIBILITY.md",
+  "/CONTRIBUTING.md",
+  "/LICENSE",
+  "/NOTICE",
+  "/README.md",
+  "/RELEASING.md",
+  "/SECURITY.md",
+  "/THIRD_PARTY_LICENSES.md",
+  "/pyproject.toml",
+  "/src",
+  "/tests",
+  "/uv.lock",
+]
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers --cov=pychef --cov-report=term-missing --cov-fail-under=75"

@@ -5,6 +5,25 @@ model and data-transformation operations. It is intended for scripts, tests,
 services, and offline tooling that must not require Node.js or JavaScript at
 runtime.
 
+## Installation
+
+The PyPI distribution is named `py-chef`; the Python import is `pychef`.
+
+```console
+python -m pip install py-chef
+```
+
+With uv:
+
+```console
+uv add py-chef
+```
+
+Python 3.10 or newer is required. The published package has no runtime
+dependencies.
+
+## Quick start
+
 ```python
 from pychef import bake
 

@@ -1,0 +1,53 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/py-chef/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.32"
+          python-version: "3.13"
+          enable-cache: true
+      - name: Verify tag and package version
+        run: test "v$(uv version --short)" = "${{ github.event.release.tag_name }}"
+      - name: Install project
+        run: uv sync --locked --dev
+      - name: Run release tests
+        run: uv run pytest
+      - name: Build distributions
+        run: uv build --no-sources --clear
+      - name: Validate distributions
+        run: |
+          uv run twine check --strict dist/*
+          uv run check-wheel-contents dist/*.whl
+          uv run --isolated --no-project --with dist/*.whl python tests/smoke_test.py
+          uv run --isolated --no-project --with dist/*.tar.gz python tests/smoke_test.py
+      - name: Publish with Trusted Publishing
+        run: uv publish --trusted-publishing always

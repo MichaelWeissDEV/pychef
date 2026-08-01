@@ -1,5 +1,8 @@
 """Pure-Python CyberChef-compatible data transformations."""
 
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _distribution_version
+
 # Importing the package registers all built-in operations.
 from . import operations as _operations  # noqa: F401
 from .compatibility import CompatibilityReport, compatibility_report
@@ -151,7 +154,10 @@ __all__ = [
     "xor_bytes",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = _distribution_version("py-chef")
+except _PackageNotFoundError:
+    __version__ = "0+unknown"
 
 
 def list_operations() -> tuple[str, ...]:
