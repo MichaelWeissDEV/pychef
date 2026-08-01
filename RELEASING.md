@@ -1,6 +1,6 @@
 # Releasing
 
-The distribution name is `py-chef`; users import it as `pychef`. Releases
+The distribution name is `cyberchef-py`; users import it as `pychef`. Releases
 are built with uv and published through PyPI Trusted Publishing. No persistent
 PyPI token is required.
 
@@ -13,8 +13,8 @@ Register pending Trusted Publishers with these exact values:
 
 | Registry | Project | Owner | Repository | Workflow | Environment |
 |---|---|---|---|---|---|
-| TestPyPI | `py-chef` | `MichaelWeissDEV` | `pychef` | `test-publish.yml` | `testpypi` |
-| PyPI | `py-chef` | `MichaelWeissDEV` | `pychef` | `publish.yml` | `pypi` |
+| TestPyPI | `cyberchef-py` | `MichaelWeissDEV` | `pychef` | `test-publish.yml` | `testpypi` |
+| PyPI | `cyberchef-py` | `MichaelWeissDEV` | `pychef` | `publish.yml` | `pypi` |
 
 Pending publishers can create the projects on first upload. Recheck that the
 name is still available immediately before the first release.

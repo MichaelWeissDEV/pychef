@@ -8,13 +8,13 @@ import pychef
 
 
 def main() -> None:
-    package = metadata("py-chef")
-    assert package["Name"] == "py-chef"
-    assert pychef.__version__ == version("py-chef")
+    package = metadata("cyberchef-py")
+    assert package["Name"] == "cyberchef-py"
+    assert pychef.__version__ == version("cyberchef-py")
     assert len(pychef.list_operations()) == 502
     assert pychef.Pipeline().from_hex().to_base64()("414243") == "QUJD"
     assert pychef.u32(pychef.p32(0xDEADBEEF)) == 0xDEADBEEF
-    print(f"py-chef {pychef.__version__}: smoke test passed")
+    print(f"cyberchef-py {pychef.__version__}: smoke test passed")
 
 
 if __name__ == "__main__":

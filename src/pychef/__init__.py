@@ -155,7 +155,7 @@ __all__ = [
 ]
 
 try:
-    __version__ = _distribution_version("py-chef")
+    __version__ = _distribution_version("cyberchef-py")
 except _PackageNotFoundError:
     __version__ = "0+unknown"
 

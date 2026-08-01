@@ -9,6 +9,7 @@ All notable changes to this project are documented here. Releases follow
 
 ### Added
 
+- The `cyberchef-py` distribution with the `pychef` import package.
 - Pure-Python implementations for all 502 CyberChef operation names.
 - CyberChef-compatible recipes with flow-control support.
 - Immutable transformation pipelines with composition, branching, tracing,

@@ -1,22 +1,22 @@
 # PyChef
 
-PyChef is a dependency-free, pure-Python implementation of CyberChef's recipe
+PyChef is an unofficial, dependency-free, pure-Python implementation of CyberChef's recipe
 model and data-transformation operations. It is intended for scripts, tests,
 services, and offline tooling that must not require Node.js or JavaScript at
 runtime.
 
 ## Installation
 
-The PyPI distribution is named `py-chef`; the Python import is `pychef`.
+The PyPI distribution is named `cyberchef-py`; the Python import is `pychef`.
 
 ```console
-python -m pip install py-chef
+python -m pip install cyberchef-py
 ```
 
 With uv:
 
 ```console
-uv add py-chef
+uv add cyberchef-py
 ```
 
 Python 3.10 or newer is required. The published package has no runtime

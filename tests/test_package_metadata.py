@@ -8,9 +8,9 @@ import pychef
 
 
 def test_distribution_metadata_matches_runtime_package() -> None:
-    package = metadata("py-chef")
-    assert package["Name"] == "py-chef"
+    package = metadata("cyberchef-py")
+    assert package["Name"] == "cyberchef-py"
     assert package["Requires-Python"] == ">=3.10"
     requirements = package.get_all("Requires-Dist")
     assert requirements is None or requirements == []
-    assert pychef.__version__ == version("py-chef")
+    assert pychef.__version__ == version("cyberchef-py")
