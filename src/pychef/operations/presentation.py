@@ -289,7 +289,7 @@ def _geohash_decode(value: str) -> tuple[float, float]:
         for bit in (16, 8, 4, 2, 1):
             interval = longitude if use_longitude else latitude
             midpoint = sum(interval) / 2
-            interval[0 if not number & bit else 1] = midpoint
+            interval[0 if number & bit else 1] = midpoint
             use_longitude = not use_longitude
     return sum(latitude) / 2, sum(longitude) / 2
 

@@ -10,7 +10,9 @@ import random
 import re
 import struct
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import cast
 
 from ..registry import operation
 from ..types import Args, Data, to_bytes
@@ -228,10 +230,9 @@ def _clamp(value: float) -> int:
     return max(0, min(255, round(value)))
 
 
-def _map_pixels(value: Data, transform: object) -> bytes:
+def _map_pixels(value: Data, transform: Callable[[_Pixel], _Pixel]) -> bytes:
     image, metadata = _image(value)
-    function = transform
-    pixels = [function(pixel) for pixel in image.pixels]  # type: ignore[operator]
+    pixels = [transform(pixel) for pixel in image.pixels]
     return _output(_Image(image.width, image.height, pixels), metadata)
 
 
@@ -257,14 +258,17 @@ def _resize(image: _Image, width: int, height: int, smooth: bool = True) -> _Ima
             fx, fy = source_x - math.floor(source_x), source_y - math.floor(source_y)
             samples = (image.get(x0, y0), image.get(x1, y0), image.get(x0, y1), image.get(x1, y1))
             pixels.append(
-                tuple(
-                    _clamp(
-                        (samples[0][c] * (1 - fx) + samples[1][c] * fx) * (1 - fy)
-                        + (samples[2][c] * (1 - fx) + samples[3][c] * fx) * fy
-                    )
-                    for c in range(4)
+                cast(
+                    _Pixel,
+                    tuple(
+                        _clamp(
+                            (samples[0][c] * (1 - fx) + samples[1][c] * fx) * (1 - fy)
+                            + (samples[2][c] * (1 - fx) + samples[3][c] * fx) * fy
+                        )
+                        for c in range(4)
+                    ),
                 )
-            )  # type: ignore[arg-type]
+            )
     return _Image(width, height, pixels)
 
 
@@ -429,10 +433,14 @@ def _box_blur(image: _Image, radius: int) -> _Image:
                 for sx in range(max(0, x - radius), min(image.width, x + radius + 1))
             ]
             pixels.append(
-                tuple(
-                    sum(pixel[channel] for pixel in samples) // len(samples) for channel in range(4)
+                cast(
+                    _Pixel,
+                    tuple(
+                        sum(pixel[channel] for pixel in samples) // len(samples)
+                        for channel in range(4)
+                    ),
                 )
-            )  # type: ignore[arg-type]
+            )
     return _Image(image.width, image.height, pixels)
 
 
@@ -452,13 +460,16 @@ def sharpen_image(value: Data, args: Args) -> Data:
     pixels: list[_Pixel] = []
     for original, soft in zip(image.pixels, blurred.pixels, strict=True):
         pixels.append(
-            tuple(
-                _clamp(channel + amount * (channel - soft[index]))
-                if abs(channel - soft[index]) >= threshold
-                else channel
-                for index, channel in enumerate(original)
+            cast(
+                _Pixel,
+                tuple(
+                    _clamp(channel + amount * (channel - soft[index]))
+                    if abs(channel - soft[index]) >= threshold
+                    else channel
+                    for index, channel in enumerate(original)
+                ),
             )
-        )  # type: ignore[arg-type]
+        )
     return _output(_Image(image.width, image.height, pixels), metadata)
 
 
@@ -469,9 +480,11 @@ def image_brightness_contrast(value: Data, args: Args) -> Data:
     factor = 259 * (contrast + 255) / (255 * (259 - contrast))
     return _map_pixels(
         value,
-        lambda pixel: tuple(
-            [_clamp(factor * (channel - 128) + 128 + brightness) for channel in pixel[:3]]
-            + [pixel[3]]
+        lambda pixel: (
+            _clamp(factor * (pixel[0] - 128) + 128 + brightness),
+            _clamp(factor * (pixel[1] - 128) + 128 + brightness),
+            _clamp(factor * (pixel[2] - 128) + 128 + brightness),
+            pixel[3],
         ),
     )
 
@@ -534,16 +547,19 @@ def normalise_image(value: Data, args: Args) -> Data:
     channels = list(zip(*(pixel[:3] for pixel in image.pixels), strict=True))
     ranges = [(min(channel), max(channel)) for channel in channels]
     pixels = [
-        (
-            *(
-                _clamp(
-                    (pixel[index] - ranges[index][0])
-                    * 255
-                    / max(1, ranges[index][1] - ranges[index][0])
-                )
-                for index in range(3)
+        cast(
+            _Pixel,
+            (
+                *(
+                    _clamp(
+                        (pixel[index] - ranges[index][0])
+                        * 255
+                        / max(1, ranges[index][1] - ranges[index][0])
+                    )
+                    for index in range(3)
+                ),
+                pixel[3],
             ),
-            pixel[3],
         )
         for pixel in image.pixels
     ]
@@ -599,7 +615,7 @@ def view_bit_plane(value: Data, args: Args) -> Data:
     channel = {"Red": 0, "Green": 1, "Blue": 2, "Alpha": 3}.get(colour, 0)
     return _map_pixels(
         value,
-        lambda pixel: ((255,) * 3 + (255,)) if pixel[channel] & (1 << bit) else (0, 0, 0, 255),
+        lambda pixel: (255, 255, 255, 255) if pixel[channel] & (1 << bit) else (0, 0, 0, 255),
     )
 
 
@@ -732,7 +748,7 @@ def add_text_to_image(value: Data, args: Args) -> Data:
         y = (image.height - text_height) // 2
     elif vertical == "Bottom":
         y = image.height - text_height
-    colour = tuple(_clamp(float(arg(args, index, 255))) for index in range(7, 11))
+    colour = cast(_Pixel, tuple(_clamp(float(arg(args, index, 255))) for index in range(7, 11)))
     pixels = list(image.pixels)
     for character_index, character in enumerate(text.upper()):
         glyph = _FONT.get(character)
@@ -748,7 +764,7 @@ def add_text_to_image(value: Data, args: Args) -> Data:
                         target_x = x + (character_index * 6 + column) * size + dx
                         target_y = y + row * size + dy
                         if 0 <= target_x < image.width and 0 <= target_y < image.height:
-                            pixels[target_y * image.width + target_x] = colour  # type: ignore[assignment]
+                            pixels[target_y * image.width + target_x] = colour
     return _output(_Image(image.width, image.height, pixels), metadata)
 
 

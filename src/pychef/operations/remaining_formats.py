@@ -267,6 +267,10 @@ def _proto_decode(data: bytes, schema: str, show_types: bool) -> dict[str, Any]:
             item: Any = _varint(reader)
             if field_type in {"sint32", "sint64"}:
                 item = (item >> 1) ^ -(item & 1)
+            elif field_type == "int32" and item & (1 << 31):
+                item -= 1 << 64 if item & (1 << 63) else 1 << 32
+            elif field_type == "int64" and item & (1 << 63):
+                item -= 1 << 64
             elif field_type == "bool":
                 item = bool(item)
         elif wire == 1:
@@ -370,7 +374,7 @@ def _avro_value(reader: _Reader, schema: Any) -> Any:
             count = _avro_long(reader)
             while count:
                 if count < 0:
-                    reader.take(_avro_long(reader))
+                    _avro_long(reader)  # Encoded block byte size; values still follow.
                     count = -count
                 values.extend(_avro_value(reader, schema["items"]) for _ in range(count))
                 count = _avro_long(reader)
@@ -380,10 +384,11 @@ def _avro_value(reader: _Reader, schema: Any) -> Any:
             count = _avro_long(reader)
             while count:
                 if count < 0:
-                    reader.take(_avro_long(reader))
+                    _avro_long(reader)  # Encoded block byte size; entries still follow.
                     count = -count
                 for _ in range(count):
-                    output[_avro_value(reader, "string")] = _avro_value(reader, schema["values"])
+                    key = _avro_value(reader, "string")
+                    output[key] = _avro_value(reader, schema["values"])
                 count = _avro_long(reader)
             return output
         if schema_type == "enum":
@@ -421,7 +426,7 @@ def avro_to_json(value: Data, args: Args) -> Data:
     count = _avro_long(reader)
     while count:
         if count < 0:
-            reader.take(_avro_long(reader))
+            _avro_long(reader)  # Encoded metadata block byte size.
             count = -count
         for _ in range(count):
             key = _avro_value(reader, "string")

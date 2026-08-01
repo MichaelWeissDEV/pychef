@@ -4,15 +4,20 @@ This inventory is pinned to CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
 - Upstream operations: 502
-- Implemented operation names: 382
-- Missing operation names: 120
-- Name coverage: 76.1%
+- Implemented operation names: 482
+- Missing operation names: 20
+- Name coverage: 96.0%
 
 “Implemented” means that a callable operation is registered. It does not claim
 bit-for-bit parity for every option combination. The pytest suite contains the
 ported upstream vectors currently verified by PyChef. Missing operations are not
 registered as placeholders and therefore fail explicitly with
 `UnknownOperationError`.
+
+Some callable operations currently provide dependency-free format subsets or
+compatibility fallbacks. The most important parity work still open within the
+registered set is MD6/Snefru/Streebog/Whirlpool, Twofish and advanced GOST,
+general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 
 | Operation | Status |
 |---|---|
@@ -23,10 +28,10 @@ registered as placeholders and therefore fail explicitly with
 | AES Encrypt | implemented |
 | AES Key Unwrap | implemented |
 | AES Key Wrap | implemented |
-| AMF Decode | missing |
-| AMF Encode | missing |
+| AMF Decode | implemented |
+| AMF Encode | implemented |
 | AND | implemented |
-| Add Text To Image | missing |
+| Add Text To Image | implemented |
 | Add line numbers | implemented |
 | Adler-32 Checksum | implemented |
 | Affine Cipher Decode | implemented |
@@ -41,8 +46,8 @@ registered as placeholders and therefore fail explicitly with
 | Ascon Hash | implemented |
 | Ascon MAC | implemented |
 | Atbash Cipher | implemented |
-| Automated Validation Test Op | missing |
-| Avro to JSON | missing |
+| Automated Validation Test Op | implemented |
+| Avro to JSON | implemented |
 | BLAKE2b | implemented |
 | BLAKE2s | implemented |
 | BLAKE3 | implemented |
@@ -59,8 +64,8 @@ registered as placeholders and therefore fail explicitly with
 | Bit shift right | implemented |
 | Blowfish Decrypt | implemented |
 | Blowfish Encrypt | implemented |
-| Blur Image | missing |
-| Bombe | missing |
+| Blur Image | implemented |
+| Bombe | implemented |
 | Bzip2 Compress | implemented |
 | Bzip2 Decompress | implemented |
 | CBOR Decode | implemented |
@@ -71,7 +76,7 @@ registered as placeholders and therefore fail explicitly with
 | CSS Minify | implemented |
 | CSS selector | implemented |
 | CSV to JSON | implemented |
-| CTPH | missing |
+| CTPH | implemented |
 | Caesar Box Cipher | implemented |
 | Caret/M-decode | implemented |
 | Cartesian Product | implemented |
@@ -84,27 +89,27 @@ registered as placeholders and therefore fail explicitly with
 | CipherSaber2 Encrypt | implemented |
 | Citrix CTX1 Decode | implemented |
 | Citrix CTX1 Encode | implemented |
-| Colossus | missing |
+| Colossus | implemented |
 | Comment | implemented |
-| Compare CTPH hashes | missing |
-| Compare SSDEEP hashes | missing |
-| Conditional Jump | missing |
-| Contain Image | missing |
-| Convert Image Format | missing |
+| Compare CTPH hashes | implemented |
+| Compare SSDEEP hashes | implemented |
+| Conditional Jump | implemented |
+| Contain Image | implemented |
+| Convert Image Format | implemented |
 | Convert Leet Speak | implemented |
 | Convert area | implemented |
-| Convert co-ordinate format | missing |
+| Convert co-ordinate format | implemented |
 | Convert data units | implemented |
 | Convert distance | implemented |
 | Convert mass | implemented |
 | Convert speed | implemented |
 | Convert to NATO alphabet | implemented |
 | Count occurrences | implemented |
-| Cover Image | missing |
-| Crop Image | missing |
+| Cover Image | implemented |
+| Crop Image | implemented |
 | DES Decrypt | implemented |
 | DES Encrypt | implemented |
-| DNS over HTTPS | missing |
+| DNS over HTTPS | implemented |
 | DateTime Delta | implemented |
 | Dechunk HTTP response | implemented |
 | Decode NetBIOS Name | implemented |
@@ -118,31 +123,31 @@ registered as placeholders and therefore fail explicitly with
 | Diff | implemented |
 | Disassemble ARM | missing |
 | Disassemble x86 | missing |
-| Dither Image | missing |
+| Dither Image | implemented |
 | Divide | implemented |
 | Drop bytes | implemented |
 | Drop nth bytes | implemented |
-| ECDSA Sign | missing |
+| ECDSA Sign | implemented |
 | ECDSA Signature Conversion | implemented |
-| ECDSA Verify | missing |
+| ECDSA Verify | implemented |
 | ELF Info | implemented |
 | Encode NetBIOS Name | implemented |
 | Encode text | implemented |
-| Enigma | missing |
+| Enigma | implemented |
 | Entropy | implemented |
 | Escape Smart Characters | implemented |
 | Escape Unicode Characters | implemented |
 | Escape string | implemented |
 | Expand alphabet range | implemented |
 | Extended GCD | implemented |
-| Extract Audio Metadata | missing |
-| Extract EXIF | missing |
-| Extract Files | missing |
-| Extract ID3 | missing |
+| Extract Audio Metadata | implemented |
+| Extract EXIF | implemented |
+| Extract Files | implemented |
+| Extract ID3 | implemented |
 | Extract IP addresses | implemented |
-| Extract LSB | missing |
+| Extract LSB | implemented |
 | Extract MAC addresses | implemented |
-| Extract RGBA | missing |
+| Extract RGBA | implemented |
 | Extract URLs | implemented |
 | Extract dates | implemented |
 | Extract domains | implemented |
@@ -152,7 +157,7 @@ registered as placeholders and therefore fail explicitly with
 | Fang URL | implemented |
 | Fernet Decrypt | implemented |
 | Fernet Encrypt | implemented |
-| File Tree | missing |
+| File Tree | implemented |
 | Filter | implemented |
 | Find / Replace | implemented |
 | Flask Session Decode | implemented |
@@ -162,8 +167,8 @@ registered as placeholders and therefore fail explicitly with
 | Fletcher-32 Checksum | implemented |
 | Fletcher-64 Checksum | implemented |
 | Fletcher-8 Checksum | implemented |
-| Flip Image | missing |
-| Fork | missing |
+| Flip Image | implemented |
+| Fork | implemented |
 | Format MAC addresses | implemented |
 | Frequency distribution | implemented |
 | From BCD | implemented |
@@ -195,25 +200,25 @@ registered as placeholders and therefore fail explicitly with
 | From Quoted Printable | implemented |
 | From UNIX Timestamp | implemented |
 | Fuzzy Match | implemented |
-| GOST Decrypt | missing |
-| GOST Encrypt | missing |
-| GOST Hash | missing |
-| GOST Key Unwrap | missing |
-| GOST Key Wrap | missing |
-| GOST Sign | missing |
-| GOST Verify | missing |
+| GOST Decrypt | implemented |
+| GOST Encrypt | implemented |
+| GOST Hash | implemented |
+| GOST Key Unwrap | implemented |
+| GOST Key Wrap | implemented |
+| GOST Sign | implemented |
+| GOST Verify | implemented |
 | Generate De Bruijn Sequence | implemented |
-| Generate ECDSA Key Pair | missing |
+| Generate ECDSA Key Pair | implemented |
 | Generate HOTP | implemented |
-| Generate Image | missing |
+| Generate Image | implemented |
 | Generate Lorem Ipsum | implemented |
 | Generate PGP Key Pair | missing |
-| Generate QR Code | missing |
-| Generate RSA Key Pair | missing |
+| Generate QR Code | implemented |
+| Generate RSA Key Pair | implemented |
 | Generate TOTP | implemented |
 | Generate UUID | implemented |
-| Generate all checksums | missing |
-| Generate all hashes | missing |
+| Generate all checksums | implemented |
+| Generate all hashes | implemented |
 | Generic Code Beautify | implemented |
 | Get All Casings | implemented |
 | Get Time | implemented |
@@ -225,21 +230,21 @@ registered as placeholders and therefore fail explicitly with
 | HASSH Server Fingerprint | implemented |
 | HMAC | implemented |
 | HTML To Text | implemented |
-| HTTP request | missing |
+| HTTP request | implemented |
 | Hamming Distance | implemented |
 | Haversine distance | implemented |
 | Head | implemented |
-| Heatmap chart | missing |
-| Hex Density chart | missing |
+| Heatmap chart | implemented |
+| Hex Density chart | implemented |
 | Hex to Object Identifier | implemented |
 | Hex to PEM | implemented |
 | IPv6 Transition Addresses | implemented |
-| Image Brightness / Contrast | missing |
-| Image Filter | missing |
-| Image Hue/Saturation/Lightness | missing |
-| Image Opacity | missing |
+| Image Brightness / Contrast | implemented |
+| Image Filter | implemented |
+| Image Hue/Saturation/Lightness | implemented |
+| Image Opacity | implemented |
 | Index of Coincidence | implemented |
-| Invert Image | missing |
+| Invert Image | implemented |
 | JA3 Fingerprint | implemented |
 | JA3S Fingerprint | implemented |
 | JA4 Fingerprint | implemented |
@@ -249,7 +254,7 @@ registered as placeholders and therefore fail explicitly with
 | JSON Minify | implemented |
 | JSON to CSV | implemented |
 | JSON to YAML | implemented |
-| JWK to PEM | missing |
+| JWK to PEM | implemented |
 | JWT Decode | implemented |
 | JWT Sign | implemented |
 | JWT Verify | implemented |
@@ -258,7 +263,7 @@ registered as placeholders and therefore fail explicitly with
 | JavaScript Parser | missing |
 | Jq | missing |
 | Jsonata Query | missing |
-| Jump | missing |
+| Jump | implemented |
 | Keccak | implemented |
 | LM Hash | implemented |
 | LS47 Decrypt | implemented |
@@ -272,27 +277,27 @@ registered as placeholders and therefore fail explicitly with
 | LZString Decompress | implemented |
 | Label | implemented |
 | Levenshtein Distance | implemented |
-| Lorenz | missing |
+| Lorenz | implemented |
 | Luhn Checksum | implemented |
 | MD2 | implemented |
 | MD4 | implemented |
 | MD5 | implemented |
-| MD6 | missing |
+| MD6 | implemented |
 | MIME Decoding | implemented |
 | MOD | implemented |
-| Magic | missing |
+| Magic | implemented |
 | Mean | implemented |
 | Median | implemented |
-| Merge | missing |
+| Merge | implemented |
 | Microsoft Script Decoder | implemented |
 | Modular Exponentiation | implemented |
 | Modular Inverse | implemented |
-| Multiple Bombe | missing |
+| Multiple Bombe | implemented |
 | Multiply | implemented |
 | MurmurHash3 | implemented |
 | NOT | implemented |
 | NT Hash | implemented |
-| Normalise Image | missing |
+| Normalise Image | implemented |
 | Normalise Unicode | implemented |
 | Numberwang | implemented |
 | OR | implemented |
@@ -301,7 +306,7 @@ registered as placeholders and therefore fail explicitly with
 | Optical Character Recognition | missing |
 | P-list Viewer | implemented |
 | PEM to Hex | implemented |
-| PEM to JWK | missing |
+| PEM to JWK | implemented |
 | PGP Decrypt | missing |
 | PGP Decrypt and Verify | missing |
 | PGP Encrypt | missing |
@@ -315,14 +320,14 @@ registered as placeholders and therefore fail explicitly with
 | Pad lines | implemented |
 | Parity Bit | implemented |
 | Parse ASN.1 hex string | implemented |
-| Parse CSR | missing |
+| Parse CSR | implemented |
 | Parse DateTime | implemented |
 | Parse Ethernet frame | implemented |
 | Parse IP range | implemented |
 | Parse IPv4 header | implemented |
 | Parse IPv6 address | implemented |
 | Parse ObjectID timestamp | implemented |
-| Parse QR Code | missing |
+| Parse QR Code | implemented |
 | Parse SSH Host Key | implemented |
 | Parse TCP | implemented |
 | Parse TLS record | implemented |
@@ -331,18 +336,18 @@ registered as placeholders and therefore fail explicitly with
 | Parse UNIX file permissions | implemented |
 | Parse URI | implemented |
 | Parse User Agent | implemented |
-| Parse X.509 CRL | missing |
-| Parse X.509 certificate | missing |
+| Parse X.509 CRL | implemented |
+| Parse X.509 certificate | implemented |
 | Parse colour code | implemented |
-| Play Media | missing |
+| Play Media | implemented |
 | Power Set | implemented |
-| Protobuf Decode | missing |
-| Protobuf Encode | missing |
+| Protobuf Decode | implemented |
+| Protobuf Encode | implemented |
 | Pseudo-Random Integer Generator | implemented |
 | Pseudo-Random Number Generator | implemented |
 | Pseudo-Random Prime Generator | implemented |
-| Public Key from Certificate | missing |
-| Public Key from Private Key | missing |
+| Public Key from Certificate | implemented |
+| Public Key from Private Key | implemented |
 | RAKE | implemented |
 | RC2 Decrypt | implemented |
 | RC2 Encrypt | implemented |
@@ -357,40 +362,40 @@ registered as placeholders and therefore fail explicitly with
 | ROT47 | implemented |
 | ROT47 Brute Force | implemented |
 | ROT8000 | implemented |
-| RSA Decrypt | missing |
-| RSA Encrypt | missing |
-| RSA Sign | missing |
-| RSA Verify | missing |
+| RSA Decrypt | implemented |
+| RSA Encrypt | implemented |
+| RSA Sign | implemented |
+| RSA Verify | implemented |
 | Rabbit | implemented |
 | Rail Fence Cipher Decode | implemented |
 | Rail Fence Cipher Encode | implemented |
-| Randomize Colour Palette | missing |
+| Randomize Colour Palette | implemented |
 | Raw Deflate | implemented |
 | Raw Inflate | implemented |
-| Register | missing |
+| Register | implemented |
 | Regular expression | implemented |
 | Remove ANSI Escape Codes | implemented |
 | Remove Diacritics | implemented |
-| Remove EXIF | missing |
+| Remove EXIF | implemented |
 | Remove line numbers | implemented |
 | Remove null bytes | implemented |
 | Remove whitespace | implemented |
-| Render Image | missing |
-| Render Markdown | missing |
-| Render PDF | missing |
-| Resize Image | missing |
+| Render Image | implemented |
+| Render Markdown | implemented |
+| Render PDF | implemented |
+| Resize Image | implemented |
 | Return | implemented |
 | Reverse | implemented |
 | Rison Decode | implemented |
 | Rison Encode | implemented |
-| Rotate Image | missing |
+| Rotate Image | implemented |
 | Rotate left | implemented |
 | Rotate right | implemented |
 | SHA0 | implemented |
 | SHA1 | implemented |
 | SHA2 | implemented |
 | SHA3 | implemented |
-| SIGABA | missing |
+| SIGABA | implemented |
 | SM2 Decrypt | missing |
 | SM2 Encrypt | missing |
 | SM3 | implemented |
@@ -398,42 +403,42 @@ registered as placeholders and therefore fail explicitly with
 | SM4 Encrypt | implemented |
 | SQL Beautify | implemented |
 | SQL Minify | implemented |
-| SSDEEP | missing |
+| SSDEEP | implemented |
 | SUB | implemented |
 | Salsa20 | implemented |
-| Scan for Embedded Files | missing |
-| Scatter chart | missing |
-| Scrypt | missing |
-| Series chart | missing |
+| Scan for Embedded Files | implemented |
+| Scatter chart | implemented |
+| Scrypt | implemented |
+| Series chart | implemented |
 | Set Difference | implemented |
 | Set Intersection | implemented |
 | Set Union | implemented |
 | Shake | implemented |
-| Sharpen Image | missing |
+| Sharpen Image | implemented |
 | Show Base64 offsets | implemented |
-| Show on map | missing |
+| Show on map | implemented |
 | Shuffle | implemented |
 | Sleep | implemented |
-| Snefru | missing |
+| Snefru | implemented |
 | Sort | implemented |
 | Split | implemented |
-| Split Colour Channels | missing |
+| Split Colour Channels | implemented |
 | Standard Deviation | implemented |
-| Streebog | missing |
+| Streebog | implemented |
 | Strings | implemented |
 | Strip HTML tags | implemented |
 | Strip HTTP headers | implemented |
 | Strip IPv4 header | implemented |
 | Strip TCP header | implemented |
 | Strip UDP header | implemented |
-| Subsection | missing |
+| Subsection | implemented |
 | Substitute | implemented |
 | Subtract | implemented |
 | Sum | implemented |
 | Swap case | implemented |
 | Swap endianness | implemented |
 | Symmetric Difference | implemented |
-| Syntax highlighter | missing |
+| Syntax highlighter | implemented |
 | TCP/IP Checksum | implemented |
 | TEA Decrypt | implemented |
 | TEA Encrypt | implemented |
@@ -481,9 +486,9 @@ registered as placeholders and therefore fail explicitly with
 | Translate DateTime Format | implemented |
 | Triple DES Decrypt | implemented |
 | Triple DES Encrypt | implemented |
-| Twofish Decrypt | missing |
-| Twofish Encrypt | missing |
-| Typex | missing |
+| Twofish Decrypt | implemented |
+| Twofish Encrypt | implemented |
+| Typex | implemented |
 | UNIX Timestamp to Windows Filetime | implemented |
 | URL Decode | implemented |
 | URL Encode | implemented |
@@ -495,10 +500,10 @@ registered as placeholders and therefore fail explicitly with
 | Unzip | implemented |
 | VarInt Decode | implemented |
 | VarInt Encode | implemented |
-| View Bit Plane | missing |
+| View Bit Plane | implemented |
 | Vigenère Decode | implemented |
 | Vigenère Encode | implemented |
-| Whirlpool | missing |
+| Whirlpool | implemented |
 | Windows Filetime to UNIX Timestamp | implemented |
 | Wrap | implemented |
 | XKCD Random Number | implemented |

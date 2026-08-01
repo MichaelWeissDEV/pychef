@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Sequence
+from typing import Any
 
 import pytest
 
@@ -11,7 +13,7 @@ from pychef import registry
 from pychef.operations import public_key as keys
 
 
-def run(name: str, value: str | bytes, args: list[object] | None = None) -> str | bytes:
+def run(name: str, value: str | bytes, args: Sequence[Any] | None = None) -> Any:
     return registry.get(name).run(value, args or [])
 
 
@@ -25,31 +27,33 @@ def rsa_pair() -> dict[str, str]:
 @pytest.mark.parametrize("scheme", ["RSAES-PKCS1-V1_5", "RSA-OAEP", "RAW"])
 def test_rsa_encrypt_decrypt_schemes(rsa_pair: dict[str, str], scheme: str) -> None:
     encrypted = run("RSA Encrypt", "hello", [rsa_pair["publicKey"], scheme, "SHA-1"])
-    decrypted = run(
-        "RSA Decrypt", encrypted, [rsa_pair["privateKey"], "", scheme, "SHA-1"]
-    )
+    decrypted = run("RSA Decrypt", encrypted, [rsa_pair["privateKey"], "", scheme, "SHA-1"])
     assert decrypted == b"hello"
 
 
 @pytest.mark.parametrize("digest", ["MD5", "SHA-1", "SHA-256"])
 def test_rsa_sign_and_verify(rsa_pair: dict[str, str], digest: str) -> None:
     signature = run("RSA Sign", "message", [rsa_pair["privateKey"], "", digest])
-    assert run(
-        "RSA Verify", signature, [rsa_pair["publicKey"], "message", "Raw", digest]
-    ) == "Verified OK"
-    assert run(
-        "RSA Verify", signature, [rsa_pair["publicKey"], "other", "Raw", digest]
-    ) == "Verification Failure"
+    assert (
+        run("RSA Verify", signature, [rsa_pair["publicKey"], "message", "Raw", digest])
+        == "Verified OK"
+    )
+    assert (
+        run("RSA Verify", signature, [rsa_pair["publicKey"], "other", "Raw", digest])
+        == "Verification Failure"
+    )
 
 
 def test_rsa_verify_message_formats(rsa_pair: dict[str, str]) -> None:
     signature = run("RSA Sign", b"abc", [rsa_pair["privateKey"], "", "SHA-256"])
-    assert run(
-        "RSA Verify", signature, [rsa_pair["publicKey"], "616263", "Hex", "SHA-256"]
-    ) == "Verified OK"
-    assert run(
-        "RSA Verify", signature, [rsa_pair["publicKey"], "YWJj", "Base64", "SHA-256"]
-    ) == "Verified OK"
+    assert (
+        run("RSA Verify", signature, [rsa_pair["publicKey"], "616263", "Hex", "SHA-256"])
+        == "Verified OK"
+    )
+    assert (
+        run("RSA Verify", signature, [rsa_pair["publicKey"], "YWJj", "Base64", "SHA-256"])
+        == "Verified OK"
+    )
 
 
 def test_rsa_pem_jwk_and_public_derivation(rsa_pair: dict[str, str]) -> None:
@@ -89,12 +93,14 @@ def test_ecdsa_sign_verify_all_formats(
     private = run("JWK to PEM", json.dumps(ec_pair["privateKey"]))
     public = run("JWK to PEM", json.dumps(ec_pair["publicKey"]))
     signature = run("ECDSA Sign", "hello", [private, "SHA-256", signature_format])
-    assert run(
-        "ECDSA Verify", signature, [signature_format, "SHA-256", public, "hello", "Raw"]
-    ) == "Verified OK"
-    assert run(
-        "ECDSA Verify", signature, [signature_format, "SHA-256", public, "bye", "Raw"]
-    ) == "Verification Failure"
+    assert (
+        run("ECDSA Verify", signature, [signature_format, "SHA-256", public, "hello", "Raw"])
+        == "Verified OK"
+    )
+    assert (
+        run("ECDSA Verify", signature, [signature_format, "SHA-256", public, "bye", "Raw"])
+        == "Verification Failure"
+    )
 
 
 @pytest.mark.parametrize("curve", ["P-256", "P-384", "P-521"])
@@ -103,9 +109,10 @@ def test_ecdsa_curves_pem_der_and_jwk(curve: str) -> None:
     private = pem_pair.split("-----BEGIN PUBLIC KEY-----")[0].strip()
     public = "-----BEGIN PUBLIC KEY-----" + pem_pair.split("-----BEGIN PUBLIC KEY-----")[1]
     signature = run("ECDSA Sign", b"curve", [private, "SHA-384", "ASN.1"])
-    assert run(
-        "ECDSA Verify", signature, ["ASN.1", "SHA-384", public, "Y3VydmU=", "Base64"]
-    ) == "Verified OK"
+    assert (
+        run("ECDSA Verify", signature, ["ASN.1", "SHA-384", public, "Y3VydmU=", "Base64"])
+        == "Verified OK"
+    )
     der = run("Generate ECDSA Key Pair", "", [curve, "DER"])
     assert isinstance(der, bytes) and der.startswith(b"0")
     derived = run("Public Key from Private Key", private)
@@ -148,9 +155,10 @@ def test_parse_csr_crl_and_extract_certificate_key(rsa_pair: dict[str, str]) -> 
     assert json.loads(run("Parse CSR", der, ["Raw"]))["type"] == "PKCS#10 CSR"
     assert json.loads(run("Parse X.509 CRL", der, ["Raw"]))["type"] == "X.509 CRL"
     public = run("Public Key from Certificate", pem, ["PEM"])
-    assert json.loads(run("PEM to JWK", public))["n"] == json.loads(
-        run("PEM to JWK", rsa_pair["publicKey"])
-    )["n"]
+    assert (
+        json.loads(run("PEM to JWK", public))["n"]
+        == json.loads(run("PEM to JWK", rsa_pair["publicKey"]))["n"]
+    )
 
 
 def test_public_key_rejects_bad_values(rsa_pair: dict[str, str], ec_pair: object) -> None:

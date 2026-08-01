@@ -8,6 +8,8 @@ import re
 import socket
 import urllib.error
 import urllib.request
+from http.client import HTTPMessage
+from typing import IO, Any, cast
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from ..registry import operation
@@ -340,32 +342,40 @@ def _safe_public_url(value: str) -> str:
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(
         self,
-        request: urllib.request.Request,
-        file_pointer: object,
+        req: urllib.request.Request,
+        fp: IO[bytes],
         code: int,
-        message: str,
-        headers: object,
-        new_url: str,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
     ) -> urllib.request.Request | None:
-        _safe_public_url(new_url)
-        return super().redirect_request(request, file_pointer, code, message, headers, new_url)
+        _safe_public_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def _request(
     url: str, method: str, headers: dict[str, str], body: bytes | None
-) -> tuple[int, str, object, bytes]:
+) -> tuple[int, str, HTTPMessage, bytes]:
     _safe_public_url(url)
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     opener = urllib.request.build_opener(_SafeRedirectHandler())
     try:
-        response = opener.open(request, timeout=30)
+        response: Any = opener.open(request, timeout=30)
     except urllib.error.HTTPError as exc:
         response = exc
     with response:
         data = response.read(_MAX_HTTP_RESPONSE + 1)
         if len(data) > _MAX_HTTP_RESPONSE:
             raise ValueError("HTTP response exceeded the 64 MiB safety limit")
-        return response.status, response.reason, response.headers, data
+        status = response.status if response.status is not None else response.getcode()
+        if status is None:
+            raise ValueError("HTTP response did not contain a status code")
+        return (
+            cast(int, status),
+            str(response.reason),
+            cast(HTTPMessage, response.headers),
+            cast(bytes, data),
+        )
 
 
 @operation("HTTP request", category="Networking")

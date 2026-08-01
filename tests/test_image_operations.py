@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import struct
 import zlib
+from collections.abc import Sequence
+from typing import Any
 
 import pytest
 
@@ -12,7 +14,7 @@ from pychef import registry
 from pychef.operations import image_ops
 
 
-def run(name: str, value: str | bytes, args: list[object] | None = None) -> str | bytes:
+def run(name: str, value: str | bytes, args: Sequence[Any] | None = None) -> Any:
     return registry.get(name).run(value, args or [])
 
 
@@ -87,7 +89,9 @@ def test_resize_contain_cover_and_crop(rgba_png: bytes) -> None:
 
     bordered = image_ops._Image(5, 5, [(255, 255, 255, 255)] * 25)
     bordered.pixels[12] = (0, 0, 0, 255)
-    autocropped = run("Crop Image", image_ops._png_encode(bordered), [0, 0, 1, 1, True, 0, True, False, 1])
+    autocropped = run(
+        "Crop Image", image_ops._png_encode(bordered), [0, 0, 1, 1, True, 0, True, False, 1]
+    )
     assert dimensions(autocropped) == (3, 3)
 
 

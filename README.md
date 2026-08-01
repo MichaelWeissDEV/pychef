@@ -35,7 +35,7 @@ result = Chef().bake(compressed_data, recipe)
 The pinned reference is CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
-This alpha release registers 382 of the 502 upstream operation names (76.1%).
+This alpha release registers 482 of the 502 upstream operation names (96.0%).
 It is not yet a complete CyberChef replacement. The exhaustive name-by-name
 matrix is in [COMPATIBILITY.md](COMPATIBILITY.md). Unsupported operations are
 not silent stubs: recipes using them raise `UnknownOperationError`.
@@ -51,17 +51,25 @@ print(len(report.implemented), len(report.missing), report.complete)
 
 “Implemented” in the inventory means that an operation is callable. Exact
 option-level parity is established incrementally through official CyberChef
-vectors ported to pytest. The current suite emphasizes deterministic encodings,
+vectors ported to pytest. The current suite covers deterministic encodings,
 compression, hashes, classical and modern ciphers, binary serialization,
-network parsers, date/time conversion, text processing, and recipe behavior.
-Browser-only rendering, image/media processing, network requests, heavyweight
-public-key/PGP features, and password hashes remain among the missing areas.
+recipe flow control, public-key operations, raster images, media metadata,
+charts, coordinates, and network requests. The 20 unregistered names are
+Argon2/Bcrypt, native disassembly, PGP, SM2, JavaScript/Jq/Jsonata evaluation,
+OCR, and YARA.
+
+Name coverage is deliberately separate from reference parity. Some callable
+operations are dependency-free compatibility fallbacks or support a documented
+format subset; in particular the legacy MD6/Snefru/Streebog/Whirlpool hashes,
+Twofish, advanced GOST modes, QR decoding, historical-machine emulation, and
+JPEG/TIFF codecs still need official vector parity before production use.
 
 ## Security and performance
 
 - There are no runtime dependencies and no subprocess or JavaScript bridge.
-- The package does not perform network access on import or during ordinary
-  operations.
+- The package does not perform network access on import. Only explicit
+  `HTTP request` and `DNS over HTTPS` operations access the network; they reject
+  credentials in URLs and local/private/reserved destinations.
 - JWT verification only accepts supported HMAC algorithms and rejects unsigned
   or asymmetric-algorithm confusion.
 - Random generators use Python's `secrets` module.

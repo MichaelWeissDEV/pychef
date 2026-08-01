@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import json
 import struct
+from collections.abc import Sequence
+from typing import Any
 
 import pytest
 
@@ -12,7 +14,7 @@ from pychef import registry
 from pychef.operations import remaining_formats as formats
 
 
-def run(name: str, value: str | bytes, args: list[object] | None = None) -> str | bytes:
+def run(name: str, value: str | bytes, args: Sequence[Any] | None = None) -> Any:
     return registry.get(name).run(value, args or [])
 
 
@@ -31,10 +33,11 @@ def test_amf_special_decoders_and_errors() -> None:
     date = b"\x0b" + struct.pack(">d", 1234.0) + b"\0\0"
     assert json.loads(run("AMF Decode", date, ["AMF0"])) == {"$date": 1234.0}
     long_text = "x" * 65536
-    assert json.loads(run("AMF Decode", run("AMF Encode", json.dumps(long_text), ["AMF0"]), ["AMF0"])) == long_text
-    assert json.loads(run("AMF Decode", b"\x0c\x0fpayload", ["AMF3"])) == {
-        "$bytes": "cGF5bG9hZA=="
-    }
+    assert (
+        json.loads(run("AMF Decode", run("AMF Encode", json.dumps(long_text), ["AMF0"]), ["AMF0"]))
+        == long_text
+    )
+    assert json.loads(run("AMF Decode", b"\x0c\x0fpayload", ["AMF3"])) == {"$bytes": "cGF5bG9hZA=="}
     with pytest.raises(ValueError):
         run("AMF Decode", b"\xff", ["AMF0"])
     with pytest.raises(ValueError):
@@ -69,9 +72,9 @@ def test_protobuf_schema_round_trip_and_wire_types() -> None:
     assert decoded["ratio"] == pytest.approx(1.5)
     assert decoded["raw"] == source["raw"]
 
-    untyped = json.loads(run("Protobuf Decode", b"\x08\x96\x01\x12\x03abc", ["", True]))
-    assert untyped["1"] == {"value": 150, "wireType": 0}
-    assert untyped["2"]["value"] == base64.b64encode(b"abc").decode()
+    untyped = json.loads(run("Protobuf Decode", b"\x08\x96\x01\x12\x03abc", ["", "", True]))
+    assert untyped["1 (unknown)"] == 150
+    assert untyped["2 (unknown)"] == base64.b64encode(b"abc").decode()
     with pytest.raises(ValueError):
         run("Protobuf Encode", "[]", [schema])
     with pytest.raises(ValueError):
@@ -116,20 +119,20 @@ def test_avro_ocf_record_array_map_union_and_enum() -> None:
     record += avro_long(2) + avro_long(1) + avro_long(2) + avro_long(0)
     record += avro_long(1) + avro_bytes(b"key") + avro_bytes(b"value") + avro_long(0)
     record += avro_long(1) + avro_bytes(b"selected") + avro_long(1) + b"xy"
-    container = b"Obj\x01" + metadata + marker + avro_long(1) + avro_long(len(record)) + record + marker
+    container = (
+        b"Obj\x01" + metadata + marker + avro_long(1) + avro_long(len(record)) + record + marker
+    )
     decoded = json.loads(run("Avro to JSON", container))
-    assert decoded == [
-        {
-            "name": "hello",
-            "count": 7,
-            "enabled": True,
-            "items": [1, 2],
-            "meta": {"key": "value"},
-            "choice": "selected",
-            "kind": "B",
-            "fixed": base64.b64encode(b"xy").decode(),
-        }
-    ]
+    assert decoded == {
+        "name": "hello",
+        "count": 7,
+        "enabled": True,
+        "items": [1, 2],
+        "meta": {"key": "value"},
+        "choice": "selected",
+        "kind": "B",
+        "fixed": base64.b64encode(b"xy").decode(),
+    }
     with pytest.raises(ValueError):
         run("Avro to JSON", b"not-avro")
 
@@ -141,7 +144,7 @@ def test_file_scanning_extraction_and_tree() -> None:
     scan = run("Scan for Embedded Files", blob)
     assert "File type:   PNG image" in scan
     assert "Offset 6" in scan
-    extracted = json.loads(run("Extract Files", blob))
+    extracted = json.loads(run("Extract Files", blob, [0]))
     assert base64.b64decode(extracted[0]["data"]).startswith(b"\x89PNG")
     tree = run("File Tree", "root/a.txt\nroot/sub/b.txt")
     assert tree == "root\n|---a.txt\n|---sub\n|   |---b.txt"
