@@ -1,0 +1,20 @@
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.13"
+  jobs:
+    pre_build:
+      - uv run python docs/_scripts/generate_operation_docs.py --check
+
+sphinx:
+  configuration: docs/conf.py
+  fail_on_warning: true
+
+python:
+  install:
+    - method: uv
+      command: sync
+      groups:
+        - docs

@@ -29,6 +29,25 @@ uv sync --locked
 uv run python examples/quickstart.py
 ```
 
+## Documentation
+
+The Sphinx documentation includes beginner guides, recipes, pipelines, CTF and
+packet tooling, the public Python API, compatibility boundaries, and a separate
+reference page for every registered operation. Its source is in
+[docs](docs/index.rst).
+
+Build the same strict HTML documentation used by Read the Docs and CI:
+
+```console
+uv sync --locked --group docs
+uv run python docs/_scripts/generate_operation_docs.py --check
+uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+```
+
+The repository contains a version 2 `.readthedocs.yaml`; importing the GitHub
+repository into Read the Docs is enough to use the pinned uv environment and
+Sphinx configuration.
+
 ## Quick start
 
 ```python

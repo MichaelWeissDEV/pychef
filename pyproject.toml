@@ -49,6 +49,11 @@ dev = [
   "ty>=0.0.1a16",
   "validate-pyproject>=0.24",
 ]
+docs = [
+  "sphinx>=7.4,<9",
+  "sphinx-copybutton>=0.5,<1",
+  "sphinx-rtd-theme>=3,<4",
+]
 
 [[tool.uv.index]]
 name = "testpypi"
@@ -64,6 +69,8 @@ include = [
   "/CHANGELOG.md",
   "/COMPATIBILITY.md",
   "/CONTRIBUTING.md",
+  "/.readthedocs.yaml",
+  "/docs",
   "/examples",
   "/LICENSE",
   "/NOTICE",

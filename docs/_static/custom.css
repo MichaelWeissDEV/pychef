@@ -1,0 +1,12 @@
+.wy-nav-content {
+  max-width: 1100px;
+}
+
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+  white-space: normal;
+}
+
+code.literal {
+  overflow-wrap: anywhere;
+}
