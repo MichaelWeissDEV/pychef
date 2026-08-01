@@ -35,10 +35,9 @@ result = Chef().bake(compressed_data, recipe)
 The pinned reference is CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
-This alpha release registers 482 of the 502 upstream operation names (96.0%).
-It is not yet a complete CyberChef replacement. The exhaustive name-by-name
-matrix is in [COMPATIBILITY.md](COMPATIBILITY.md). Unsupported operations are
-not silent stubs: recipes using them raise `UnknownOperationError`.
+This alpha release registers all 502 upstream operation names (100% name
+coverage). It is not yet a bit-for-bit CyberChef replacement. The exhaustive
+name-by-name matrix is in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 Compatibility can also be inspected in Python:
 
@@ -54,15 +53,18 @@ option-level parity is established incrementally through official CyberChef
 vectors ported to pytest. The current suite covers deterministic encodings,
 compression, hashes, classical and modern ciphers, binary serialization,
 recipe flow control, public-key operations, raster images, media metadata,
-charts, coordinates, and network requests. The 20 unregistered names are
-Argon2/Bcrypt, native disassembly, PGP, SM2, JavaScript/Jq/Jsonata evaluation,
-OCR, and YARA.
+charts, coordinates, network requests, Argon2/Bcrypt, SM2, PGP workflows,
+machine-code inspection, JSON query languages, OCR, and YARA rules.
 
 Name coverage is deliberately separate from reference parity. Some callable
 operations are dependency-free compatibility fallbacks or support a documented
 format subset; in particular the legacy MD6/Snefru/Streebog/Whirlpool hashes,
-Twofish, advanced GOST modes, QR decoding, historical-machine emulation, and
-JPEG/TIFF codecs still need official vector parity before production use.
+Twofish, advanced GOST modes, QR decoding, historical-machine emulation,
+JPEG/TIFF codecs, the JavaScript/Jq/Jsonata and YARA language subsets,
+high-contrast bitmap OCR, the instruction decoder subset, and PyChef's
+non-interoperable PGP-style envelope still need broader official parity before
+production use. Argon2, Bcrypt, and SM2 are genuine algorithm implementations
+and are checked against independent or official vectors.
 
 ## Security and performance
 

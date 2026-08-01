@@ -4,20 +4,20 @@ This inventory is pinned to CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
 - Upstream operations: 502
-- Implemented operation names: 482
-- Missing operation names: 20
-- Name coverage: 96.0%
+- Implemented operation names: 502
+- Missing operation names: 0
+- Name coverage: 100.0%
 
 “Implemented” means that a callable operation is registered. It does not claim
 bit-for-bit parity for every option combination. The pytest suite contains the
-ported upstream vectors currently verified by PyChef. Missing operations are not
-registered as placeholders and therefore fail explicitly with
-`UnknownOperationError`.
+ported upstream vectors currently verified by PyChef.
 
 Some callable operations currently provide dependency-free format subsets or
 compatibility fallbacks. The most important parity work still open within the
 registered set is MD6/Snefru/Streebog/Whirlpool, Twofish and advanced GOST,
-general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
+general QR decoding, JPEG/TIFF codecs, complete historical-machine parity,
+full JavaScript/Jq/Jsonata and YARA grammars, general-purpose OCR, complete
+instruction decoding, and interoperable OpenPGP packet support.
 
 | Operation | Status |
 |---|---|
@@ -39,8 +39,8 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | Alternating Caps | implemented |
 | Analyse UUID | implemented |
 | Analyse hash | implemented |
-| Argon2 | missing |
-| Argon2 compare | missing |
+| Argon2 | implemented |
+| Argon2 compare | implemented |
 | Ascon Decrypt | implemented |
 | Ascon Encrypt | implemented |
 | Ascon Hash | implemented |
@@ -55,8 +55,8 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | BSON serialise | implemented |
 | Bacon Cipher Decode | implemented |
 | Bacon Cipher Encode | implemented |
-| Bcrypt | missing |
-| Bcrypt compare | missing |
+| Bcrypt | implemented |
+| Bcrypt compare | implemented |
 | Bcrypt parse | implemented |
 | Bifid Cipher Decode | implemented |
 | Bifid Cipher Encode | implemented |
@@ -121,8 +121,8 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | Derive PBKDF2 key | implemented |
 | Detect File Type | implemented |
 | Diff | implemented |
-| Disassemble ARM | missing |
-| Disassemble x86 | missing |
+| Disassemble ARM | implemented |
+| Disassemble x86 | implemented |
 | Dither Image | implemented |
 | Divide | implemented |
 | Drop bytes | implemented |
@@ -212,7 +212,7 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | Generate HOTP | implemented |
 | Generate Image | implemented |
 | Generate Lorem Ipsum | implemented |
-| Generate PGP Key Pair | missing |
+| Generate PGP Key Pair | implemented |
 | Generate QR Code | implemented |
 | Generate RSA Key Pair | implemented |
 | Generate TOTP | implemented |
@@ -260,9 +260,9 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | JWT Verify | implemented |
 | JavaScript Beautify | implemented |
 | JavaScript Minify | implemented |
-| JavaScript Parser | missing |
-| Jq | missing |
-| Jsonata Query | missing |
+| JavaScript Parser | implemented |
+| Jq | implemented |
+| Jsonata Query | implemented |
 | Jump | implemented |
 | Keccak | implemented |
 | LM Hash | implemented |
@@ -303,16 +303,16 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | OR | implemented |
 | Object Identifier to Hex | implemented |
 | Offset checker | implemented |
-| Optical Character Recognition | missing |
+| Optical Character Recognition | implemented |
 | P-list Viewer | implemented |
 | PEM to Hex | implemented |
 | PEM to JWK | implemented |
-| PGP Decrypt | missing |
-| PGP Decrypt and Verify | missing |
-| PGP Encrypt | missing |
-| PGP Encrypt and Sign | missing |
-| PGP Sign | missing |
-| PGP Verify | missing |
+| PGP Decrypt | implemented |
+| PGP Decrypt and Verify | implemented |
+| PGP Encrypt | implemented |
+| PGP Encrypt and Sign | implemented |
+| PGP Sign | implemented |
+| PGP Verify | implemented |
 | PHP Deserialize | implemented |
 | PHP Serialize | implemented |
 | PRESENT Decrypt | implemented |
@@ -396,8 +396,8 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | SHA2 | implemented |
 | SHA3 | implemented |
 | SIGABA | implemented |
-| SM2 Decrypt | missing |
-| SM2 Encrypt | missing |
+| SM2 Decrypt | implemented |
+| SM2 Encrypt | implemented |
 | SM3 | implemented |
 | SM4 Decrypt | implemented |
 | SM4 Encrypt | implemented |
@@ -519,7 +519,7 @@ general QR decoding, JPEG/TIFF codecs, and complete historical-machine parity.
 | XXTEA Decrypt | implemented |
 | XXTEA Encrypt | implemented |
 | YAML to JSON | implemented |
-| YARA Rules | missing |
+| YARA Rules | implemented |
 | Zip | implemented |
 | Zlib Deflate | implemented |
 | Zlib Inflate | implemented |
