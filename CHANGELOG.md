@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Releases follow
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-01
+
 ### Fixed
 
 - Aligned Charcode, HTML Entity, Base85, Float, Punycode, and general radix
@@ -34,5 +36,6 @@ All notable changes to this project are documented here. Releases follow
 - Structured Ethernet, IP, TCP, UDP, DNS, PCAP, and PCAPNG parsing.
 - Type information, pytest coverage, Ruff linting, and ty type checking.
 
-[Unreleased]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/MichaelWeissDEV/pychef/releases/tag/v0.1.0

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cyberchef-py"
-version = "0.1.0"
+version = "0.1.1"
 description = "Unofficial pure-Python CyberChef-compatible recipes, pipelines, and CTF tools"
 readme = "README.md"
 requires-python = ">=3.10"
