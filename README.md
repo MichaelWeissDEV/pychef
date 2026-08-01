@@ -30,6 +30,107 @@ recipe = Recipe(["Gunzip", {"op": "Decode text", "args": ["UTF-8 (65001)"]}])
 result = Chef().bake(compressed_data, recipe)
 ```
 
+## Fluent pipelines
+
+`Pipeline` builds immutable, reusable transformations. Use `.then()` for any
+registered CyberChef operation or the typed convenience methods for common CTF
+workflows. Pipelines compose with `|`; a value can also be piped into one.
+
+```python
+from pychef import Pipeline
+
+decode = Pipeline().from_hex().xor(b"\x42").decode()
+assert decode("0a272e2e2d") == "Hello"
+assert "0a272e2e2d" | decode == "Hello"
+
+base64_decode = Pipeline().from_base64()
+combined = decode | Pipeline().to_base64()
+results = combined.transform_many(["0a272e2e2d", "152d302e26"])
+```
+
+Branches receive the same current value. Their outputs can be concatenated as
+long as all branches return the same type as the separator:
+
+```python
+hash_line = Pipeline().concat(
+    Pipeline().digest("md5"),
+    Pipeline().digest("sha256"),
+    separator=":",
+)
+print(hash_line(b"flag"))
+
+trace = decode.trace("0a272e2e2d")
+print([(step.name, step.output) for step in trace])
+```
+
+Python callables and structured data are valid stages too. `.select()` walks
+nested dictionary keys and sequence indexes. A pipeline that only contains
+CyberChef operations can be recovered as `.recipe`.
+
+## CTF and binary helpers
+
+The top-level API includes pwntools-style integer packing, explicit endian
+variants, byte XOR, de Bruijn patterns, dumps, hashing, and flattening:
+
+```python
+from pychef import cyclic, cyclic_find, flat, p32, p32be, sha256, u64
+
+payload = flat(b"A" * 40, p32(0xDEADBEEF), p32be(0x1337))
+address = u64(leaked_bytes)
+offset = cyclic_find(crashed_value)
+fingerprint = sha256(payload)
+```
+
+`p8`, `p16`, `p32`, and `p64` use little endian by default; `p16le`/`p16be`,
+`p32le`/`p32be`, `p64le`/`p64be`, and matching `u*` functions are explicit.
+`pack()` and `unpack()` support arbitrary byte-aligned widths and signed
+integers. `swap_endian()` reverses each fixed-width word.
+
+AES helpers accept CBC, ECB, CFB, OFB, CTR, and authenticated GCM. Non-ECB
+modes require an explicit IV/nonce. GCM appends its 16-byte tag by default;
+detached tags are available through `aes_gcm_encrypt()`:
+
+```python
+from pychef import Pipeline, aes_decrypt, aes_encrypt, aes_gcm_encrypt
+
+ciphertext = aes_encrypt(data, key, mode="CBC", iv=iv, padding="pkcs7")
+assert aes_decrypt(ciphertext, key, mode="CBC", iv=iv) == data
+
+ciphertext, tag = aes_gcm_encrypt(data, key, iv=nonce, aad=b"header")
+round_trip = (
+    Pipeline()
+    .aes_encrypt(key, mode="GCM", iv=nonce, aad=b"header")
+    .aes_decrypt(key, mode="GCM", iv=nonce, aad=b"header")
+)
+assert round_trip(data) == data
+```
+
+Keys, IVs, and tags are raw bytes by default. Pass `key_format="hex"`,
+`iv_format="hex"`, or `tag_format="hex"` for textual hexadecimal material.
+
+## Packets and capture files
+
+`parse_capture()` auto-detects classic PCAP and PCAPNG and returns ordinary
+Python dictionaries. Ethernet/VLAN, Linux cooked captures, loopback/raw IP,
+ARP, IPv4, IPv6 extension headers, ICMP, TCP options, UDP, DNS, and recognizable
+HTTP/TLS records are decoded recursively. Unsupported link or application data
+remains available as bytes.
+
+```python
+from pychef import Pipeline, parse_capture, read_capture
+
+capture = read_capture("challenge.pcap")
+first_packet = capture["packets"][0]["decoded"]
+
+source = (Pipeline().parse_capture().select("packets", 0, "decoded", "network", "source"))(
+    pcap_bytes
+)
+```
+
+Parsers enforce packet-count, packet-size, and file-size limits. `json_safe()`
+or `packet_json()` converts retained byte strings to `{hex, length}` objects for
+JSON output without losing their sizes.
+
 ## Compatibility status
 
 The pinned reference is CyberChef 11.3.0 at commit
@@ -81,7 +182,10 @@ implementations and official vectors rather than compatibility placeholders.
 - Random generators use Python's `secrets` module.
 - Parsers validate lengths and fail through `OperationError` instead of silently
   returning corrupt data.
+- PCAP/PCAPNG readers cap file, packet, and packet-count sizes and retain a
+  per-packet decode error instead of discarding the captured bytes.
 - A `Recipe` can be constructed once and reused to avoid repeat parsing.
+- A `Pipeline` is immutable and can likewise be constructed once and reused.
 
 Pure-Python cryptographic implementations are provided for compatibility and
 testing; use a professionally audited cryptographic package for production key
@@ -102,7 +206,7 @@ uv build
 ```
 
 Pytest enforces branch coverage of at least 75%; the current suite contains
-more than 830 tests and reports over 85% branch coverage. Ruff handles
+more than 850 tests and reports 84% branch coverage. Ruff handles
 formatting and linting, and `ty` checks the typed public API. The published
 wheel has no runtime dependencies.
 

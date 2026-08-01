@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]
 authors = [{ name = "PyChef contributors" }]
-keywords = ["cyberchef", "encoding", "cryptography", "data-transformation"]
+keywords = ["cyberchef", "ctf", "pcap", "encoding", "cryptography", "data-transformation"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: Apache Software License",
