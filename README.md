@@ -22,6 +22,13 @@ uv add py-chef
 Python 3.10 or newer is required. The published package has no runtime
 dependencies.
 
+Run the complete local example from a repository checkout:
+
+```console
+uv sync --locked
+uv run python examples/quickstart.py
+```
+
 ## Quick start
 
 ```python

@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]
-authors = [{ name = "PyChef contributors" }]
+authors = [{ name = "Michael Weiss" }]
 keywords = ["cyberchef", "ctf", "pcap", "encoding", "cryptography", "data-transformation"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -32,10 +32,10 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/michaelweiss/pychef"
-Source = "https://github.com/michaelweiss/pychef"
-Issues = "https://github.com/michaelweiss/pychef/issues"
-Changelog = "https://github.com/michaelweiss/pychef/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/MichaelWeissDEV/pychef"
+Source = "https://github.com/MichaelWeissDEV/pychef"
+Issues = "https://github.com/MichaelWeissDEV/pychef/issues"
+Changelog = "https://github.com/MichaelWeissDEV/pychef/blob/main/CHANGELOG.md"
 Upstream = "https://github.com/gchq/CyberChef"
 
 [dependency-groups]
@@ -64,6 +64,7 @@ include = [
   "/CHANGELOG.md",
   "/COMPATIBILITY.md",
   "/CONTRIBUTING.md",
+  "/examples",
   "/LICENSE",
   "/NOTICE",
   "/README.md",

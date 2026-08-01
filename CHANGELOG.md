@@ -18,5 +18,5 @@ All notable changes to this project are documented here. Releases follow
 - Structured Ethernet, IP, TCP, UDP, DNS, PCAP, and PCAPNG parsing.
 - Type information, pytest coverage, Ruff linting, and ty type checking.
 
-[Unreleased]: https://github.com/michaelweiss/pychef/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/michaelweiss/pychef/releases/tag/v0.1.0
+[Unreleased]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/MichaelWeissDEV/pychef/releases/tag/v0.1.0

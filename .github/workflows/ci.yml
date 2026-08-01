@@ -42,6 +42,8 @@ jobs:
         run: uv sync --locked --dev
       - name: Run tests
         run: uv run pytest
+      - name: Run quick-start example
+        run: uv run python examples/quickstart.py
 
   quality:
     name: Quality and distributions

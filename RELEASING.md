@@ -13,8 +13,8 @@ Register pending Trusted Publishers with these exact values:
 
 | Registry | Project | Owner | Repository | Workflow | Environment |
 |---|---|---|---|---|---|
-| TestPyPI | `py-chef` | `michaelweiss` | `pychef` | `test-publish.yml` | `testpypi` |
-| PyPI | `py-chef` | `michaelweiss` | `pychef` | `publish.yml` | `pypi` |
+| TestPyPI | `py-chef` | `MichaelWeissDEV` | `pychef` | `test-publish.yml` | `testpypi` |
+| PyPI | `py-chef` | `MichaelWeissDEV` | `pychef` | `publish.yml` | `pypi` |
 
 Pending publishers can create the projects on first upload. Recheck that the
 name is still available immediately before the first release.
