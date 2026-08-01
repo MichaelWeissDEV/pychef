@@ -44,6 +44,33 @@ def test_amf_special_decoders_and_errors() -> None:
         formats._amf3_encode(object())
 
 
+def test_amf3_reference_tables_and_extended_markers() -> None:
+    string_reference = b"\x09\x05\x01\x06\x09same\x06\x00"
+    assert json.loads(run("AMF Decode", string_reference, ["AMF3"])) == ["same", "same"]
+
+    object_reference = b"\x09\x05\x01\x0a\x0b\x01\x03x\x04\x01\x01\x0a\x02"
+    assert json.loads(run("AMF Decode", object_reference, ["AMF3"])) == [{"x": 1}, {"x": 1}]
+
+    trait_reference = b"\x09\x05\x01\x0a\x13\x01\x03x\x04\x01\x0a\x01\x04\x02"
+    assert json.loads(run("AMF Decode", trait_reference, ["AMF3"])) == [{"x": 1}, {"x": 2}]
+
+    date = b"\x08\x01" + struct.pack(">d", 1234.5)
+    assert json.loads(run("AMF Decode", date, ["AMF3"])) == {"$date": 1234.5}
+
+    vector = b"\x0d\x05\x01" + struct.pack(">ii", -1, 2)
+    assert json.loads(run("AMF Decode", vector, ["AMF3"])) == {
+        "$vector": "int",
+        "$fixed": True,
+        "$values": [-1, 2],
+    }
+
+    dictionary = b"\x11\x03\x00\x06\x03k\x04\x07"
+    assert json.loads(run("AMF Decode", dictionary, ["AMF3"])) == {
+        "$weak": False,
+        "$entries": [["k", 7]],
+    }
+
+
 def test_protobuf_schema_round_trip_and_wire_types() -> None:
     schema = """
         message Example {

@@ -35,6 +35,27 @@ def test_official_hash_vectors(operation: str, args: list[str], expected: str) -
     assert bake("Hello, World!", [{"op": operation, "args": args}]) == expected
 
 
+@pytest.mark.parametrize(
+    ("operation", "args", "expected"),
+    [
+        ("SHA1", [16], "8802f93009399a00fd051aa321b4420fdc9905e9"),
+        (
+            "SHA2",
+            ["256", 16],
+            "1b0409f57bcc0e6315a1de882ce11eca5867604ca6985a9893de22897a384f31",
+        ),
+        (
+            "SHA2",
+            ["512", 64, 32],
+            "74ea62eea4d4e57db5fe2d730a6b2763809389a423f224cb0391167de735a305"
+            "f889ce830bbb4432225166eb95ed0b4ea58ea94afafc2ccc29d48d0b9bbdeb52",
+        ),
+    ],
+)
+def test_configurable_sha_rounds(operation: str, args: list[object], expected: str) -> None:
+    assert bake("abc", [{"op": operation, "args": args}]) == expected
+
+
 def test_blake2_official_vectors_and_encodings() -> None:
     expected = (
         "4386a08a265111c9896f56456e2cb61a64239115c4784cf438e36cc851221972da3fb011"

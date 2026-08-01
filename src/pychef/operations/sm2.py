@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import secrets
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg
 from .public_key import _Curve, _point_mul
@@ -112,7 +112,7 @@ def _validate_public(point: tuple[int, int]) -> None:
         raise ValueError("Invalid SM2 public key order")
 
 
-@operation("SM2 Encrypt", category="Crypto")
+@implementation("SM2 Encrypt", category="Crypto")
 def sm2_encrypt(value: Data, args: Args) -> Data:
     public = (
         _hex_key(arg(args, 0, "DEADBEEF"), "Public Key X"),
@@ -143,7 +143,7 @@ def sm2_encrypt(value: Data, args: Args) -> Data:
         return result.hex()
 
 
-@operation("SM2 Decrypt", category="Crypto")
+@implementation("SM2 Decrypt", category="Crypto")
 def sm2_decrypt(value: Data, args: Args) -> Data:
     private = _hex_key(arg(args, 0, "DEADBEEF"), "Private Key")
     if private >= _SM2.n:

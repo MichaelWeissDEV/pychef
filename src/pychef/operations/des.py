@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg
 from .modern_ciphers import _formatted_input, _formatted_output, _toggle_bytes
@@ -1024,22 +1024,22 @@ def _des(value: Data, args: Args, *, decrypting: bool, triple: bool) -> Data:
     return _formatted_output(result, output_format)
 
 
-@operation("DES Encrypt", category="Ciphers")
+@implementation("DES Encrypt", category="Ciphers")
 def des_encrypt(value: Data, args: Args) -> Data:
     return _des(value, args, decrypting=False, triple=False)
 
 
-@operation("DES Decrypt", category="Ciphers")
+@implementation("DES Decrypt", category="Ciphers")
 def des_decrypt(value: Data, args: Args) -> Data:
     return _des(value, args, decrypting=True, triple=False)
 
 
-@operation("Triple DES Encrypt", category="Ciphers")
+@implementation("Triple DES Encrypt", category="Ciphers")
 def triple_des_encrypt(value: Data, args: Args) -> Data:
     return _des(value, args, decrypting=False, triple=True)
 
 
-@operation("Triple DES Decrypt", category="Ciphers")
+@implementation("Triple DES Decrypt", category="Ciphers")
 def triple_des_decrypt(value: Data, args: Args) -> Data:
     return _des(value, args, decrypting=True, triple=True)
 
@@ -1054,7 +1054,7 @@ def _lm_des_key(key: bytes) -> bytes:
     return bytes(output)
 
 
-@operation("LM Hash", category="Crypto")
+@implementation("LM Hash", category="Crypto")
 def lm_hash(value: Data, _args: Args) -> Data:
     password = to_text(value).upper().encode("latin-1", "replace")[:14].ljust(14, b"\0")
     magic = b"KGS!@#$%"

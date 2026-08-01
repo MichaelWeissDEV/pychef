@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import string
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep, require_int
 
@@ -18,7 +18,7 @@ def _rotate_alphabet(character: str, amount: int, alphabet: str) -> str:
     return alphabet[(index + amount) % len(alphabet)]
 
 
-@operation("ROT13", category="Ciphers")
+@implementation("ROT13", category="Ciphers")
 def rot13(value: Data, args: Args) -> str:
     rotate_lower = bool(arg(args, 0, True))
     rotate_upper = bool(arg(args, 1, True))
@@ -36,7 +36,7 @@ def rot13(value: Data, args: Args) -> str:
     return output
 
 
-@operation("ROT47", category="Ciphers")
+@implementation("ROT47", category="Ciphers")
 def rot47(value: Data, args: Args) -> str:
     amount = require_int(arg(args, 0, 47))
     return "".join(
@@ -47,7 +47,7 @@ def rot47(value: Data, args: Args) -> str:
     )
 
 
-@operation("ROT8000", category="Ciphers")
+@implementation("ROT8000", category="Ciphers")
 def rot8000(value: Data, _args: Args) -> str:
     transitions = (
         (33, True),
@@ -95,12 +95,12 @@ def _affine(value: Data, multiplier: int, shift: int) -> str:
     return output
 
 
-@operation("Affine Cipher Encode", category="Ciphers")
+@implementation("Affine Cipher Encode", category="Ciphers")
 def affine_encode(value: Data, args: Args) -> str:
     return _affine(value, require_int(arg(args, 0, 1)), require_int(arg(args, 1, 0)))
 
 
-@operation("Affine Cipher Decode", category="Ciphers")
+@implementation("Affine Cipher Decode", category="Ciphers")
 def affine_decode(value: Data, args: Args) -> str:
     multiplier = require_int(arg(args, 0, 1))
     inverse = pow(multiplier, -1, 26)
@@ -108,12 +108,12 @@ def affine_decode(value: Data, args: Args) -> str:
     return _affine(value, inverse, -inverse * shift)
 
 
-@operation("Atbash Cipher", category="Ciphers")
+@implementation("Atbash Cipher", category="Ciphers")
 def atbash(value: Data, _args: Args) -> str:
     return _affine(value, 25, 25)
 
 
-@operation("A1Z26 Cipher Encode", category="Ciphers")
+@implementation("A1Z26 Cipher Encode", category="Ciphers")
 def a1z26_encode(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Space"), " ")
     return delimiter.join(
@@ -123,7 +123,7 @@ def a1z26_encode(value: Data, args: Args) -> str:
     )
 
 
-@operation("A1Z26 Cipher Decode", category="Ciphers")
+@implementation("A1Z26 Cipher Decode", category="Ciphers")
 def a1z26_decode(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Space"), " ")
     if not to_text(value):
@@ -154,17 +154,17 @@ def _vigenere(value: Data, key: str, decode: bool) -> str:
     return output
 
 
-@operation("Vigenère Encode", category="Ciphers")
+@implementation("Vigenère Encode", category="Ciphers")
 def vigenere_encode(value: Data, args: Args) -> str:
     return _vigenere(value, str(arg(args, 0, "")), False)
 
 
-@operation("Vigenère Decode", category="Ciphers")
+@implementation("Vigenère Decode", category="Ciphers")
 def vigenere_decode(value: Data, args: Args) -> str:
     return _vigenere(value, str(arg(args, 0, "")), True)
 
 
-@operation("Caesar Box Cipher", category="Ciphers")
+@implementation("Caesar Box Cipher", category="Ciphers")
 def caesar_box(value: Data, args: Args) -> str:
     height = require_int(arg(args, 0, 1), name="box height")
     if height < 1:
@@ -187,7 +187,7 @@ def _rail_pattern(length: int, rails: int, offset: int) -> list[int]:
     return [rails - 1 - abs(cycle // 2 - (position + offset) % cycle) for position in range(length)]
 
 
-@operation("Rail Fence Cipher Encode", category="Ciphers")
+@implementation("Rail Fence Cipher Encode", category="Ciphers")
 def rail_fence_encode(value: Data, args: Args) -> str:
     text = to_text(value)
     rails = require_int(arg(args, 0, 2))
@@ -198,7 +198,7 @@ def rail_fence_encode(value: Data, args: Args) -> str:
     )
 
 
-@operation("Rail Fence Cipher Decode", category="Ciphers")
+@implementation("Rail Fence Cipher Decode", category="Ciphers")
 def rail_fence_decode(value: Data, args: Args) -> str:
     text = to_text(value)
     rails = require_int(arg(args, 0, 2))
@@ -211,7 +211,7 @@ def rail_fence_decode(value: Data, args: Args) -> str:
     return "".join(output)
 
 
-@operation("Bacon Cipher Encode", category="Ciphers")
+@implementation("Bacon Cipher Encode", category="Ciphers")
 def bacon_encode(value: Data, args: Args) -> str:
     alphabet_name = str(arg(args, 0, "Standard (I=J and U=V)"))
     translation = str(arg(args, 1, "A/B"))
@@ -237,7 +237,7 @@ def bacon_encode(value: Data, args: Args) -> str:
     return "".join(output)
 
 
-@operation("Bacon Cipher Decode", category="Ciphers")
+@implementation("Bacon Cipher Decode", category="Ciphers")
 def bacon_decode(value: Data, args: Args) -> str:
     alphabet_name = str(arg(args, 0, "Standard (I=J and U=V)"))
     translation = str(arg(args, 1, "A/B"))
@@ -266,7 +266,7 @@ def bacon_decode(value: Data, args: Args) -> str:
     )
 
 
-@operation("Cetacean Cipher Encode", category="Ciphers")
+@implementation("Cetacean Cipher Encode", category="Ciphers")
 def cetacean_encode(value: Data, _args: Args) -> str:
     return "".join(
         " " if character == " " else f"{ord(character):016b}".translate(str.maketrans("01", "Ee"))
@@ -274,7 +274,7 @@ def cetacean_encode(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Cetacean Cipher Decode", category="Ciphers")
+@implementation("Cetacean Cipher Decode", category="Ciphers")
 def cetacean_decode(value: Data, _args: Args) -> str:
     bits = "".join(
         "0000000000100000" if character == " " else ("1" if character == "e" else "0")
@@ -287,7 +287,7 @@ def cetacean_decode(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Encode NetBIOS Name", category="Ciphers")
+@implementation("Encode NetBIOS Name", category="Ciphers")
 def encode_netbios(value: Data, args: Args) -> bytes:
     offset = require_int(arg(args, 0, 65))
     data = to_bytes(value)
@@ -297,7 +297,7 @@ def encode_netbios(value: Data, args: Args) -> bytes:
     return bytes(part for byte in data for part in ((byte >> 4) + offset, (byte & 0xF) + offset))
 
 
-@operation("Decode NetBIOS Name", category="Ciphers")
+@implementation("Decode NetBIOS Name", category="Ciphers")
 def decode_netbios(value: Data, args: Args) -> bytes:
     offset = require_int(arg(args, 0, 65))
     data = to_bytes(value)
@@ -309,7 +309,7 @@ def decode_netbios(value: Data, args: Args) -> bytes:
     ).rstrip(b" ")
 
 
-@operation("Citrix CTX1 Encode", category="Ciphers")
+@implementation("Citrix CTX1 Encode", category="Ciphers")
 def citrix_ctx1_encode(value: Data, _args: Args) -> bytes:
     output = bytearray()
     previous = 0
@@ -319,7 +319,7 @@ def citrix_ctx1_encode(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("Citrix CTX1 Decode", category="Ciphers")
+@implementation("Citrix CTX1 Decode", category="Ciphers")
 def citrix_ctx1_decode(value: Data, _args: Args) -> str:
     data = to_bytes(value)
     if len(data) % 4:
@@ -382,7 +382,7 @@ _MORSE = {
 }
 
 
-@operation("To Morse Code", category="Ciphers")
+@implementation("To Morse Code", category="Ciphers")
 def to_morse(value: Data, args: Args) -> str:
     style = str(arg(args, 0, "-/ ."))
     letter_delimiter = char_rep(arg(args, 1, "Space"), " ")
@@ -405,7 +405,7 @@ def to_morse(value: Data, args: Args) -> str:
     return output
 
 
-@operation("From Morse Code", category="Ciphers")
+@implementation("From Morse Code", category="Ciphers")
 def from_morse(value: Data, args: Args) -> str:
     letter_delimiter = char_rep(arg(args, 0, "Space"), " ")
     word_delimiter = char_rep(arg(args, 1, "Forward slash"), "/")
@@ -417,7 +417,7 @@ def from_morse(value: Data, args: Args) -> str:
     )
 
 
-@operation("RC4", category="Ciphers")
+@implementation("RC4", category="Ciphers")
 def rc4(value: Data, args: Args) -> bytes:
     key_value = arg(args, 0, {"string": "", "option": "Hex"})
     if isinstance(key_value, dict):
@@ -493,7 +493,7 @@ _NATO.update(
 _NATO.update({",": "Comma", "/": "Fraction bar", ".": "Full stop"})
 
 
-@operation("Convert to NATO alphabet", category="Text")
+@implementation("Convert to NATO alphabet", category="Text")
 def nato_alphabet(value: Data, _args: Args) -> str:
     return "".join(
         (_NATO[character.upper()] + " ") if character.upper() in _NATO else character

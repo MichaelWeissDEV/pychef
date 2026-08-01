@@ -15,7 +15,7 @@ import secrets
 import time
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg
 from .aes import _encrypt_block
@@ -399,7 +399,7 @@ def _return_plaintext(data: bytes) -> Data:
         return data
 
 
-@operation("Generate PGP Key Pair", category="PGP")
+@implementation("Generate PGP Key Pair", category="PGP")
 def generate_pgp_key_pair(value: Data, args: Args) -> str:
     del value
     key_type = str(arg(args, 0, "RSA-1024"))
@@ -451,7 +451,7 @@ def generate_pgp_key_pair(value: Data, args: Args) -> str:
     return f"{private_armour}\n{public_armour}"
 
 
-@operation("PGP Encrypt", category="PGP")
+@implementation("PGP Encrypt", category="PGP")
 def pgp_encrypt(value: Data, args: Args) -> str:
     public = str(arg(args, 0, ""))
     if not public:
@@ -459,7 +459,7 @@ def pgp_encrypt(value: Data, args: Args) -> str:
     return _encrypt_payload(to_bytes(value), _load_public(public))
 
 
-@operation("PGP Decrypt", category="PGP")
+@implementation("PGP Decrypt", category="PGP")
 def pgp_decrypt(value: Data, args: Args) -> Data:
     private = str(arg(args, 0, ""))
     if not private:
@@ -469,7 +469,7 @@ def pgp_decrypt(value: Data, args: Args) -> Data:
     return _return_plaintext(plaintext)
 
 
-@operation("PGP Sign", category="PGP")
+@implementation("PGP Sign", category="PGP")
 def pgp_sign(value: Data, args: Args) -> str:
     private = str(arg(args, 0, ""))
     if not private:
@@ -478,7 +478,7 @@ def pgp_sign(value: Data, args: Args) -> str:
     return _armour("MESSAGE", _compact(_sign_payload(to_bytes(value), key, secret)))
 
 
-@operation("PGP Verify", category="PGP")
+@implementation("PGP Verify", category="PGP")
 def pgp_verify(value: Data, args: Args) -> Data:
     public = str(arg(args, 0, ""))
     if not public:
@@ -492,7 +492,7 @@ def pgp_verify(value: Data, args: Args) -> Data:
     return _signed_result(data, payload, key)
 
 
-@operation("PGP Encrypt and Sign", category="PGP")
+@implementation("PGP Encrypt and Sign", category="PGP")
 def pgp_encrypt_and_sign(value: Data, args: Args) -> str:
     private, public = str(arg(args, 0, "")), str(arg(args, 2, ""))
     if not private:
@@ -504,7 +504,7 @@ def pgp_encrypt_and_sign(value: Data, args: Args) -> str:
     return _encrypt_payload(signed, _load_public(public), "signed")
 
 
-@operation("PGP Decrypt and Verify", category="PGP")
+@implementation("PGP Decrypt and Verify", category="PGP")
 def pgp_decrypt_and_verify(value: Data, args: Args) -> Data:
     public, private = str(arg(args, 0, "")), str(arg(args, 1, ""))
     if not public:

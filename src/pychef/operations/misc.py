@@ -10,19 +10,19 @@ import secrets
 import time
 from collections import Counter
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep, require_int
 
 
-@operation("Comment", category="Flow control")
-@operation("Label", category="Flow control")
-@operation("Return", category="Flow control")
+@implementation("Comment", category="Flow control")
+@implementation("Label", category="Flow control")
+@implementation("Return", category="Flow control")
 def passthrough(value: Data, _args: Args) -> Data:
     return value
 
 
-@operation("Sleep", category="Flow control")
+@implementation("Sleep", category="Flow control")
 def sleep(value: Data, args: Args) -> Data:
     milliseconds = require_int(arg(args, 0, 1000), name="time")
     if not 0 <= milliseconds <= 60_000:
@@ -31,7 +31,7 @@ def sleep(value: Data, args: Args) -> Data:
     return value
 
 
-@operation("Get All Casings", category="Text")
+@implementation("Get All Casings", category="Text")
 def get_all_casings(value: Data, _args: Args) -> str:
     text = to_text(value).lower()
     if len(text) > 20:
@@ -45,7 +45,7 @@ def get_all_casings(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Generate De Bruijn Sequence", category="Generators")
+@implementation("Generate De Bruijn Sequence", category="Generators")
 def de_bruijn(value: Data, args: Args) -> str:
     alphabet_size = require_int(arg(args, 0, 2), name="alphabet size")
     subsequence_length = require_int(arg(args, 1, 3), name="key length")
@@ -78,7 +78,7 @@ _LOREM = (
 )
 
 
-@operation("Generate Lorem Ipsum", category="Generators")
+@implementation("Generate Lorem Ipsum", category="Generators")
 def lorem_ipsum(_value: Data, args: Args) -> str:
     length = require_int(arg(args, 0, 3), name="length")
     unit = str(arg(args, 1, "Paragraphs"))
@@ -93,7 +93,7 @@ def lorem_ipsum(_value: Data, args: Args) -> str:
     return "\n\n".join([_LOREM] * length)
 
 
-@operation("Pseudo-Random Number Generator", category="Generators")
+@implementation("Pseudo-Random Number Generator", category="Generators")
 def random_bytes(_value: Data, args: Args) -> Data:
     count = require_int(arg(args, 0, 32), name="number of bytes")
     output_format = str(arg(args, 1, "Hex"))
@@ -109,7 +109,7 @@ def random_bytes(_value: Data, args: Args) -> Data:
     return data
 
 
-@operation("Pseudo-Random Integer Generator", category="Generators")
+@implementation("Pseudo-Random Integer Generator", category="Generators")
 def random_integers(_value: Data, args: Args) -> str:
     count = require_int(arg(args, 0, 1))
     minimum = require_int(arg(args, 1, 0))
@@ -126,12 +126,12 @@ def random_integers(_value: Data, args: Args) -> str:
     return delimiter.join(map(str, values))
 
 
-@operation("XKCD Random Number", category="Generators")
+@implementation("XKCD Random Number", category="Generators")
 def xkcd_random(_value: Data, _args: Args) -> str:
     return "4"
 
 
-@operation("Shuffle", category="Text")
+@implementation("Shuffle", category="Text")
 def shuffle(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     items = to_text(value).split(delimiter)
@@ -139,7 +139,7 @@ def shuffle(value: Data, args: Args) -> str:
     return delimiter.join(items)
 
 
-@operation("Frequency distribution", category="Analysis")
+@implementation("Frequency distribution", category="Analysis")
 def frequency_distribution(value: Data, args: Args) -> str:
     show_zero = bool(arg(args, 0, True))
     show_ascii = bool(arg(args, 1, True))
@@ -156,7 +156,7 @@ def frequency_distribution(value: Data, args: Args) -> str:
     return "\n".join(lines)
 
 
-@operation("Diff", category="Analysis")
+@implementation("Diff", category="Analysis")
 def diff(value: Data, args: Args) -> str:
     delimiter = str(arg(args, 0, "\\n\\n")).replace("\\n", "\n")
     mode = str(arg(args, 1, "Character"))
@@ -172,14 +172,14 @@ def diff(value: Data, args: Args) -> str:
     return "".join(difflib.ndiff(left_parts, right_parts))
 
 
-@operation("Fuzzy Match", category="Analysis")
+@implementation("Fuzzy Match", category="Analysis")
 def fuzzy_match(value: Data, args: Args) -> str:
     search = str(arg(args, 0, ""))
     score = difflib.SequenceMatcher(None, search.casefold(), to_text(value).casefold()).ratio()
     return str(round(score * 100))
 
 
-@operation("Extract dates", category="Extraction")
+@implementation("Extract dates", category="Extraction")
 def extract_dates(value: Data, args: Args) -> str:
     pattern = re.compile(r"\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b")
     matches = pattern.findall(to_text(value))
@@ -187,7 +187,7 @@ def extract_dates(value: Data, args: Args) -> str:
     return f"Total found: {len(matches)}\n\n{output}" if bool(arg(args, 0, False)) else output
 
 
-@operation("Extract file paths", category="Extraction")
+@implementation("Extract file paths", category="Extraction")
 def extract_file_paths(value: Data, args: Args) -> str:
     matches: list[str] = []
     text = to_text(value)
@@ -203,12 +203,12 @@ def extract_file_paths(value: Data, args: Args) -> str:
     return f"Total found: {len(matches)}\n\n{output}" if bool(arg(args, 2, False)) else output
 
 
-@operation("Remove ANSI Escape Codes", category="Text")
+@implementation("Remove ANSI Escape Codes", category="Text")
 def remove_ansi(value: Data, _args: Args) -> str:
     return re.sub(r"\x1B\[[0-?]*[ -/]*[@-~]", "", to_text(value))
 
 
-@operation("Escape Smart Characters", category="Text")
+@implementation("Escape Smart Characters", category="Text")
 def escape_smart(value: Data, args: Args) -> str:
     mode = str(arg(args, 0, "Include"))
     replacements = {
@@ -228,7 +228,7 @@ def escape_smart(value: Data, args: Args) -> str:
     return output
 
 
-@operation("Caret/M-decode", category="Encoding")
+@implementation("Caret/M-decode", category="Encoding")
 def caret_m_decode(value: Data, _args: Args) -> bytes:
     text = to_text(value)
     output = bytearray()
@@ -251,7 +251,7 @@ def caret_m_decode(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("Substitute", category="Ciphers")
+@implementation("Substitute", category="Ciphers")
 def substitute(value: Data, args: Args) -> str:
     plaintext = str(arg(args, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
     ciphertext = str(arg(args, 1, "XYZABCDEFGHIJKLMNOPQRSTUVW"))
@@ -264,13 +264,13 @@ def substitute(value: Data, args: Args) -> str:
     return to_text(value).translate(table)
 
 
-@operation("Template", category="Text")
+@implementation("Template", category="Text")
 def template(value: Data, args: Args) -> str:
     definition = str(arg(args, 0, ""))
     return definition.replace("{{this}}", to_text(value)).replace("{{{this}}}", to_text(value))
 
 
-@operation("Offset checker", category="Analysis")
+@implementation("Offset checker", category="Analysis")
 def offset_checker(value: Data, args: Args) -> str:
     delimiter = str(arg(args, 0, "\\n\\n")).replace("\\n", "\n")
     left, separator, right = to_text(value).partition(delimiter)
@@ -284,7 +284,7 @@ def _rows(value: Data, cell_delimiter: str, row_delimiter: str) -> list[list[str
     return [row.split(cell_delimiter) for row in to_text(value).split(row_delimiter)]
 
 
-@operation("To Table", category="Text")
+@implementation("To Table", category="Text")
 def to_table(value: Data, args: Args) -> str:
     cell_delimiter = str(arg(args, 0, ","))
     row_delimiter = str(arg(args, 1, "\\r\\n")).replace("\\r", "\r").replace("\\n", "\n")
@@ -340,34 +340,34 @@ def _beautify_code(value: Data, indent: str) -> str:
     return "".join(output).strip()
 
 
-@operation("CSS Minify", category="Code")
+@implementation("CSS Minify", category="Code")
 def css_minify(value: Data, args: Args) -> str:
     return _minify_code(value, bool(arg(args, 0, False)))
 
 
-@operation("CSS Beautify", category="Code")
+@implementation("CSS Beautify", category="Code")
 def css_beautify(value: Data, args: Args) -> str:
     return _beautify_code(value, str(arg(args, 0, "\\t")).replace("\\t", "\t"))
 
 
-@operation("JavaScript Minify", category="Code")
-@operation("SQL Minify", category="Code")
+@implementation("JavaScript Minify", category="Code")
+@implementation("SQL Minify", category="Code")
 def code_minify(value: Data, _args: Args) -> str:
     return _minify_code(value)
 
 
-@operation("JavaScript Beautify", category="Code")
-@operation("SQL Beautify", category="Code")
+@implementation("JavaScript Beautify", category="Code")
+@implementation("SQL Beautify", category="Code")
 def code_beautify(value: Data, args: Args) -> str:
     return _beautify_code(value, str(arg(args, 0, "\\t")).replace("\\t", "\t"))
 
 
-@operation("Generic Code Beautify", category="Code")
+@implementation("Generic Code Beautify", category="Code")
 def generic_beautify(value: Data, _args: Args) -> str:
     return _beautify_code(value, "    ")
 
 
-@operation("Numberwang", category="Miscellaneous")
+@implementation("Numberwang", category="Miscellaneous")
 def numberwang(value: Data, _args: Args) -> str:
     text = to_text(value)
     if not text:

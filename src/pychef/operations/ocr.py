@@ -6,7 +6,7 @@ import hashlib
 import math
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg
 from .image_ops import _FONT, _Image, _image
@@ -187,7 +187,7 @@ def _ocr(image: _Image) -> tuple[str, float]:
     return "\n".join(lines), (100 * sum(confidences) / len(confidences) if confidences else 0.0)
 
 
-@operation("Optical Character Recognition", category="OCR")
+@implementation("Optical Character Recognition", category="OCR")
 def optical_character_recognition(value: Data, args: Args) -> str:
     data = to_bytes(value)
     try:

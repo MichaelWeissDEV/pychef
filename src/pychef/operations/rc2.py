@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg
 from .modern_ciphers import _formatted_input, _formatted_output, _toggle_bytes
@@ -133,11 +133,11 @@ def _rc2(value: Data, args: Args, *, decrypting: bool) -> Data:
     return _formatted_output(_crypt(data, key, iv, decrypting=decrypting), output_format)
 
 
-@operation("RC2 Encrypt", category="Ciphers")
+@implementation("RC2 Encrypt", category="Ciphers")
 def rc2_encrypt(value: Data, args: Args) -> Data:
     return _rc2(value, args, decrypting=False)
 
 
-@operation("RC2 Decrypt", category="Ciphers")
+@implementation("RC2 Decrypt", category="Ciphers")
 def rc2_decrypt(value: Data, args: Args) -> Data:
     return _rc2(value, args, decrypting=True)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg, require_int
 
@@ -40,7 +40,7 @@ def _probable_prime(value: int, rounds: int) -> bool:
     return True
 
 
-@operation("Pseudo-Random Prime Generator", category="Generators")
+@implementation("Pseudo-Random Prime Generator", category="Generators")
 def pseudo_random_prime_generator(value: Data, args: Args) -> Data:
     del value
     bits = require_int(arg(args, 0, 512), name="bit length")

@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg
 
@@ -332,7 +332,7 @@ def _condition(
     raise ValueError(f"unsupported condition: {expression}")
 
 
-@operation("YARA Rules", category="Yara")
+@implementation("YARA Rules", category="Yara")
 def yara_rules(value: Data, args: Args) -> str:
     data = to_bytes(value)
     source = str(arg(args, 0, ""))

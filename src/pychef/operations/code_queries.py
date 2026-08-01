@@ -9,7 +9,7 @@ import xml.etree.ElementTree as element_tree
 from dataclasses import dataclass
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, char_rep
 
@@ -45,7 +45,7 @@ def _simple_selector_matches(element: element_tree.Element, selector: str) -> bo
     )
 
 
-@operation("CSS selector", category="Code")
+@implementation("CSS selector", category="Code")
 def css_selector(value: Data, args: Args) -> str:
     selector = str(arg(args, 0, "")).strip()
     delimiter = _delimiter(arg(args, 1, "Line feed"))
@@ -73,7 +73,7 @@ def css_selector(value: Data, args: Args) -> str:
     return _serialize(matches, delimiter)
 
 
-@operation("XPath expression", category="Code")
+@implementation("XPath expression", category="Code")
 def xpath_expression(value: Data, args: Args) -> str:
     expression = str(arg(args, 0, "")).strip()
     delimiter = _delimiter(arg(args, 1, "Line feed"))
@@ -313,7 +313,7 @@ def _binary(operator: str, left: Any, right: Any) -> Any:
     raise ValueError(f"Unsupported binary operator: {operator}")
 
 
-@operation("Jq", category="Code")
+@implementation("Jq", category="Code")
 def jq(value: Data, args: Args) -> str:
     query = str(arg(args, 0, "")) or "."
     raw = bool(arg(args, 1, False))
@@ -528,7 +528,7 @@ def _jsonata_eval(expression: str, context: Any, root: Any) -> Any:
     return _jsonata_path(expression, context, root)
 
 
-@operation("Jsonata Query", category="Code")
+@implementation("Jsonata Query", category="Code")
 def jsonata_query(value: Data, args: Args) -> str:
     root = _json(value)
     query = str(arg(args, 0, "string"))
@@ -826,7 +826,7 @@ def _strip_ast_options(value: Any, *, locations: bool, ranges: bool) -> None:
             _strip_ast_options(child, locations=locations, ranges=ranges)
 
 
-@operation("JavaScript Parser", category="Code")
+@implementation("JavaScript Parser", category="Code")
 def javascript_parser(value: Data, args: Args) -> str:
     source = to_text(value)
     locations = bool(arg(args, 0, False))

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg, require_int
 
@@ -77,7 +77,7 @@ def _digest(data: bytes, rounds: int) -> bytes:
     return b"".join(word.to_bytes(4, "little") for word in state)
 
 
-@operation("HAS-160", category="Crypto")
+@implementation("HAS-160", category="Crypto")
 def has160(value: Data, args: Args) -> Data:
     rounds = require_int(arg(args, 0, 80), name="rounds")
     if not 1 <= rounds <= 80:

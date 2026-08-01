@@ -6,7 +6,7 @@ import struct
 from collections.abc import Sequence
 from functools import lru_cache
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg
 from .modern_ciphers import _formatted_input, _formatted_output, _toggle_bytes
@@ -278,11 +278,11 @@ def _blowfish(value: Data, args: Args, *, decrypting: bool) -> Data:
     return _formatted_output(result, output_format)
 
 
-@operation("Blowfish Encrypt", category="Ciphers")
+@implementation("Blowfish Encrypt", category="Ciphers")
 def blowfish_encrypt(value: Data, args: Args) -> Data:
     return _blowfish(value, args, decrypting=False)
 
 
-@operation("Blowfish Decrypt", category="Ciphers")
+@implementation("Blowfish Decrypt", category="Ciphers")
 def blowfish_decrypt(value: Data, args: Args) -> Data:
     return _blowfish(value, args, decrypting=True)

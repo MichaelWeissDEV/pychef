@@ -5,7 +5,7 @@ from __future__ import annotations
 import hmac
 from functools import lru_cache
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg, require_int
 from .modern_ciphers import _formatted_input, _formatted_output, _toggle_bytes
@@ -300,7 +300,7 @@ def _append_tag(output: Data, tag: bytes, output_format: str) -> Data:
     return output + "\n\nTag: " + formatted_tag
 
 
-@operation("AES Encrypt", category="Ciphers")
+@implementation("AES Encrypt", category="Ciphers")
 def aes_encrypt(value: Data, args: Args) -> Data:
     key = _toggle_bytes(arg(args, 0, {"option": "Hex", "string": ""}))
     iv = _toggle_bytes(arg(args, 1, {"option": "Hex", "string": ""}))
@@ -330,7 +330,7 @@ def aes_encrypt(value: Data, args: Args) -> Data:
     return _append_tag(output, tag, output_format) if mode == "GCM" else output
 
 
-@operation("AES Decrypt", category="Ciphers")
+@implementation("AES Decrypt", category="Ciphers")
 def aes_decrypt(value: Data, args: Args) -> Data:
     key = _toggle_bytes(arg(args, 0, {"option": "Hex", "string": ""}))
     configured_iv = _toggle_bytes(arg(args, 1, {"option": "Hex", "string": ""}))
@@ -375,7 +375,7 @@ def _wrap_arguments(args: Args) -> tuple[bytes, bytes, str, str]:
     return key, iv, str(arg(args, 2, "Hex")), str(arg(args, 3, "Hex"))
 
 
-@operation("AES Key Wrap", category="Ciphers")
+@implementation("AES Key Wrap", category="Ciphers")
 def aes_key_wrap(value: Data, args: Args) -> Data:
     key, accumulator, input_format, output_format = _wrap_arguments(args)
     data = _formatted_input(value, input_format)
@@ -391,7 +391,7 @@ def aes_key_wrap(value: Data, args: Args) -> Data:
     return _formatted_output(accumulator + b"".join(blocks), output_format)
 
 
-@operation("AES Key Unwrap", category="Ciphers")
+@implementation("AES Key Unwrap", category="Ciphers")
 def aes_key_unwrap(value: Data, args: Args) -> Data:
     key, expected_iv, input_format, output_format = _wrap_arguments(args)
     data = _formatted_input(value, input_format)

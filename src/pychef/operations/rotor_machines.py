@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from itertools import permutations, product
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, require_int
 
@@ -153,7 +153,7 @@ def _rotor_transform(
     return joined
 
 
-@operation("Enigma", category="Bletchley")
+@implementation("Enigma", category="Bletchley")
 def enigma(value: Data, args: Args) -> Data:
     strict = bool(arg(args, 15, True))
     return _rotor_transform(
@@ -190,7 +190,7 @@ def _bombe_run(
     return matches
 
 
-@operation("Bombe", category="Bletchley")
+@implementation("Bombe", category="Bletchley")
 def bombe(value: Data, args: Args) -> Data:
     base: list[object] = [
         arg(args, 0, "3-rotor"),
@@ -216,7 +216,7 @@ def bombe(value: Data, args: Args) -> Data:
     return json.dumps({"nLoops": 0, "result": result}, indent=2)
 
 
-@operation("Multiple Bombe", category="Bletchley")
+@implementation("Multiple Bombe", category="Bletchley")
 def multiple_bombe(value: Data, args: Args) -> Data:
     rotor_lines = str(arg(args, 1, "I\nII\nIII")).splitlines()
     reflector_lines = str(arg(args, 3, "B")).splitlines()
@@ -292,12 +292,12 @@ def _generic_reciprocal(value: Data, name: str, count: int, args: Args) -> str:
     )
 
 
-@operation("Typex", category="Bletchley")
+@implementation("Typex", category="Bletchley")
 def typex(value: Data, args: Args) -> Data:
     return _generic_reciprocal(value, "Typex", 5, args)
 
 
-@operation("SIGABA", category="Bletchley")
+@implementation("SIGABA", category="Bletchley")
 def sigaba(value: Data, args: Args) -> Data:
     return _generic_reciprocal(value, "SIGABA", 5, args)
 
@@ -330,7 +330,7 @@ def _wheel(pattern: str, length: int, seed: str) -> list[int]:
     return output[:length]
 
 
-@operation("Lorenz", category="Bletchley")
+@implementation("Lorenz", category="Bletchley")
 def lorenz(value: Data, args: Args) -> Data:
     input_ita2 = str(arg(args, 4, "Plaintext")) == "ITA2"
     output_ita2 = str(arg(args, 5, "Plaintext")) == "ITA2"
@@ -355,7 +355,7 @@ def lorenz(value: Data, args: Args) -> Data:
     return "".join(_ITA2_LETTERS[code] if _ITA2_LETTERS[code] != "\0" else "?" for code in output)
 
 
-@operation("Colossus", category="Bletchley")
+@implementation("Colossus", category="Bletchley")
 def colossus(value: Data, args: Args) -> Data:
     del args
     codes = _lorenz_codes(to_text(value), True)

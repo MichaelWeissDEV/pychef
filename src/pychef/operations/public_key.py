@@ -10,7 +10,7 @@ import re
 import secrets
 from dataclasses import dataclass
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
 from .random_prime import _candidate, _probable_prime
@@ -339,7 +339,7 @@ def _rsa_signature_block(message: bytes, width: int, digest: str) -> bytes:
     return b"\0\x01" + b"\xff" * (width - len(info) - 3) + b"\0" + info
 
 
-@operation("Generate RSA Key Pair", category="Public Key")
+@implementation("Generate RSA Key Pair", category="Public Key")
 def generate_rsa_key_pair(value: Data, args: Args) -> Data:
     del value
     bits = require_int(arg(args, 0, 2048), name="RSA key size")
@@ -354,7 +354,7 @@ def generate_rsa_key_pair(value: Data, args: Args) -> Data:
     return f"{private}\n{public}"
 
 
-@operation("RSA Encrypt", category="Public Key")
+@implementation("RSA Encrypt", category="Public Key")
 def rsa_encrypt(value: Data, args: Args) -> Data:
     key = _rsa_key(str(arg(args, 0, "")))
     scheme = str(arg(args, 1, "RSA-OAEP"))
@@ -363,7 +363,7 @@ def rsa_encrypt(value: Data, args: Args) -> Data:
     return _rsa_apply(_rsa_pad_encrypt(to_bytes(value), width, scheme, digest), key, False)
 
 
-@operation("RSA Decrypt", category="Public Key")
+@implementation("RSA Decrypt", category="Public Key")
 def rsa_decrypt(value: Data, args: Args) -> Data:
     key = _rsa_key(str(arg(args, 0, "")), private=True)
     scheme = str(arg(args, 2, arg(args, 1, "RSA-OAEP")))
@@ -371,7 +371,7 @@ def rsa_decrypt(value: Data, args: Args) -> Data:
     return _rsa_unpad_encrypt(_rsa_apply(to_bytes(value), key, True), scheme, digest)
 
 
-@operation("RSA Sign", category="Public Key")
+@implementation("RSA Sign", category="Public Key")
 def rsa_sign(value: Data, args: Args) -> Data:
     key = _rsa_key(str(arg(args, 0, "")), private=True)
     digest = _hash_name(arg(args, 2, "SHA-256"))
@@ -388,7 +388,7 @@ def _decode_formatted(value: object, data_format: str) -> bytes:
     return text.encode()
 
 
-@operation("RSA Verify", category="Public Key")
+@implementation("RSA Verify", category="Public Key")
 def rsa_verify(value: Data, args: Args) -> Data:
     key = _rsa_key(str(arg(args, 0, "")))
     message = _decode_formatted(arg(args, 1, ""), str(arg(args, 2, "Raw")))
@@ -634,7 +634,7 @@ def _ecdsa_read(value: Data, signature_format: str, width: int) -> tuple[int, in
     return int(str(parsed["r"]), 16), int(str(parsed["s"]), 16)
 
 
-@operation("Generate ECDSA Key Pair", category="Public Key")
+@implementation("Generate ECDSA Key Pair", category="Public Key")
 def generate_ecdsa_key_pair(value: Data, args: Args) -> Data:
     del value
     curve = _CURVES[str(arg(args, 0, "P-256"))]
@@ -653,7 +653,7 @@ def generate_ecdsa_key_pair(value: Data, args: Args) -> Data:
     return f"{_pem('PRIVATE KEY', _ec_pkcs8(key))}\n{_pem('PUBLIC KEY', _ec_spki(key))}"
 
 
-@operation("ECDSA Sign", category="Public Key")
+@implementation("ECDSA Sign", category="Public Key")
 def ecdsa_sign(value: Data, args: Args) -> Data:
     key = _ec_key(str(arg(args, 0, "")), private=True)
     digest = _hash_name(arg(args, 1, "SHA-256"))
@@ -669,7 +669,7 @@ def ecdsa_sign(value: Data, args: Args) -> Data:
     return json.dumps({"r": f"{first:x}", "s": f"{second:x}"})
 
 
-@operation("ECDSA Verify", category="Public Key")
+@implementation("ECDSA Verify", category="Public Key")
 def ecdsa_verify(value: Data, args: Args) -> Data:
     signature_format = str(arg(args, 0, "ASN.1"))
     digest_name = _hash_name(arg(args, 1, "SHA-256"))
@@ -725,7 +725,7 @@ def _ec_jwk(key: _ECKey, private: bool) -> dict[str, str]:
     return output
 
 
-@operation("PEM to JWK", category="Public Key")
+@implementation("PEM to JWK", category="Public Key")
 def pem_to_jwk(value: Data, args: Args) -> Data:
     del args
     try:
@@ -736,7 +736,7 @@ def pem_to_jwk(value: Data, args: Args) -> Data:
         return json.dumps(_ec_jwk(ec, ec.private is not None), indent=2)
 
 
-@operation("JWK to PEM", category="Public Key")
+@implementation("JWK to PEM", category="Public Key")
 def jwk_to_pem(value: Data, args: Args) -> Data:
     del args
     parsed = json.loads(to_text(value))
@@ -816,30 +816,30 @@ def _asn1_summary(root: _Node, kind: str) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
-@operation("Parse X.509 certificate", category="Public Key")
+@implementation("Parse X.509 certificate", category="Public Key")
 def parse_x509_certificate(value: Data, args: Args) -> Data:
     return _asn1_summary(
         _parse_der(_der_input(value, str(arg(args, 0, "PEM")))), "X.509 certificate"
     )
 
 
-@operation("Parse CSR", category="Public Key")
+@implementation("Parse CSR", category="Public Key")
 def parse_csr(value: Data, args: Args) -> Data:
     return _asn1_summary(_parse_der(_der_input(value, str(arg(args, 0, "PEM")))), "PKCS#10 CSR")
 
 
-@operation("Parse X.509 CRL", category="Public Key")
+@implementation("Parse X.509 CRL", category="Public Key")
 def parse_x509_crl(value: Data, args: Args) -> Data:
     return _asn1_summary(_parse_der(_der_input(value, str(arg(args, 0, "PEM")))), "X.509 CRL")
 
 
-@operation("Public Key from Certificate", category="Public Key")
+@implementation("Public Key from Certificate", category="Public Key")
 def public_key_from_certificate(value: Data, args: Args) -> Data:
     root = _parse_der(_der_input(value, str(arg(args, 0, "PEM"))))
     return _pem("PUBLIC KEY", _spki_node(root).raw)
 
 
-@operation("Public Key from Private Key", category="Public Key")
+@implementation("Public Key from Private Key", category="Public Key")
 def public_key_from_private_key(value: Data, args: Args) -> Data:
     del args
     try:

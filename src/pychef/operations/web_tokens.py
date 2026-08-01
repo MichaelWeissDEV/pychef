@@ -10,7 +10,7 @@ import time
 import zlib
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg
 
@@ -41,7 +41,7 @@ def _toggle_bytes(value: Any) -> bytes:
 _JWT_HMAC = {"HS256": hashlib.sha256, "HS384": hashlib.sha384, "HS512": hashlib.sha512}
 
 
-@operation("JWT Sign", category="Authentication")
+@implementation("JWT Sign", category="Authentication")
 def jwt_sign(value: Data, args: Args) -> str:
     key = str(arg(args, 0, "")).encode()
     algorithm = str(arg(args, 1, "HS256"))
@@ -62,7 +62,7 @@ def jwt_sign(value: Data, args: Args) -> str:
     return f"{signed}.{_urlsafe_encode(signature)}"
 
 
-@operation("JWT Verify", category="Authentication")
+@implementation("JWT Verify", category="Authentication")
 def jwt_verify(value: Data, args: Args) -> str:
     token = to_text(value).strip()
     parts = token.split(".")
@@ -103,7 +103,7 @@ def _flask_payload(token: str) -> Any:
     return json.loads(raw)
 
 
-@operation("Flask Session Decode", category="Authentication")
+@implementation("Flask Session Decode", category="Authentication")
 def flask_session_decode(value: Data, _args: Args) -> str:
     return json.dumps(_flask_payload(to_text(value).strip()), ensure_ascii=False, indent=4)
 
@@ -117,7 +117,7 @@ def _flask_signature(value: str, secret: bytes, salt: bytes, algorithm: str) -> 
     return hmac.new(derived, value.encode(), digest).digest()
 
 
-@operation("Flask Session Sign", category="Authentication")
+@implementation("Flask Session Sign", category="Authentication")
 def flask_session_sign(value: Data, args: Args) -> str:
     secret = _toggle_bytes(arg(args, 0, {"string": "", "option": "UTF8"}))
     salt = _toggle_bytes(arg(args, 1, {"string": "cookie-session", "option": "UTF8"}))
@@ -138,7 +138,7 @@ def flask_session_sign(value: Data, args: Args) -> str:
     return f"{unsigned}.{_urlsafe_encode(signature)}"
 
 
-@operation("Flask Session Verify", category="Authentication")
+@implementation("Flask Session Verify", category="Authentication")
 def flask_session_verify(value: Data, args: Args) -> str:
     token = to_text(value).strip()
     secret = _toggle_bytes(arg(args, 0, {"string": "", "option": "UTF8"}))

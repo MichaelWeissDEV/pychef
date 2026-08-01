@@ -50,6 +50,25 @@ def test_cbor_round_trip_and_malformed_input() -> None:
         bake(b"\x1a\0", ["CBOR Decode"])
 
 
+def test_cbor_canonical_map_order_and_indefinite_lengths() -> None:
+    encoded_map = bake('{"aa":1,"b":2}', ["CBOR Encode"])
+    assert isinstance(encoded_map, bytes)
+    assert encoded_map.hex() == "a261620262616101"
+    vectors = {
+        "7f62737463726561ff": "strea",
+        "9f01820203ff": [1, [2, 3]],
+        "bf61610161629f0203ffff": {"a": 1, "b": [2, 3]},
+    }
+    for encoded, expected in vectors.items():
+        assert json.loads(bake(bytes.fromhex(encoded), ["CBOR Decode"])) == expected
+
+
+@pytest.mark.parametrize("encoded", [b"\x1f", b"\x9f\x01"])
+def test_cbor_rejects_invalid_indefinite_values(encoded: bytes) -> None:
+    with pytest.raises(OperationError):
+        bake(encoded, ["CBOR Decode"])
+
+
 def test_bson_official_vectors() -> None:
     expected = b"\x16\x00\x00\x00\x02hello\x00\x06\x00\x00\x00world\x00\x00"
     assert bake('{"hello":"world"}', ["BSON serialise"]) == expected

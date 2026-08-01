@@ -11,7 +11,7 @@ import tarfile
 import zipfile
 import zlib
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg, require_int
 
@@ -26,7 +26,7 @@ def _strategy(name: str) -> int:
     }.get(name, zlib.Z_DEFAULT_STRATEGY)
 
 
-@operation("Gzip", category="Compression")
+@implementation("Gzip", category="Compression")
 def gzip_compress(value: Data, args: Args) -> bytes:
     compression_type = str(arg(args, 0, "Dynamic Huffman Coding"))
     filename = str(arg(args, 1, ""))
@@ -59,60 +59,60 @@ def gzip_compress(value: Data, args: Args) -> bytes:
     return bytes(header) + body + trailer
 
 
-@operation("Gunzip", category="Compression")
+@implementation("Gunzip", category="Compression")
 def gunzip(value: Data, _args: Args) -> bytes:
     return gzip.decompress(to_bytes(value))
 
 
-@operation("Zlib Deflate", category="Compression")
+@implementation("Zlib Deflate", category="Compression")
 def zlib_deflate(value: Data, args: Args) -> bytes:
     strategy = _strategy(str(arg(args, 0, "Dynamic Huffman Coding")))
     compressor = zlib.compressobj(level=6, wbits=zlib.MAX_WBITS, strategy=strategy)
     return compressor.compress(to_bytes(value)) + compressor.flush()
 
 
-@operation("Zlib Inflate", category="Compression")
+@implementation("Zlib Inflate", category="Compression")
 def zlib_inflate(value: Data, args: Args) -> bytes:
     start = require_int(arg(args, 0, 0), name="start index")
     return zlib.decompress(to_bytes(value)[start:], wbits=zlib.MAX_WBITS)
 
 
-@operation("Raw Deflate", category="Compression")
+@implementation("Raw Deflate", category="Compression")
 def raw_deflate(value: Data, args: Args) -> bytes:
     strategy = _strategy(str(arg(args, 0, "Dynamic Huffman Coding")))
     compressor = zlib.compressobj(level=6, wbits=-zlib.MAX_WBITS, strategy=strategy)
     return compressor.compress(to_bytes(value)) + compressor.flush()
 
 
-@operation("Raw Inflate", category="Compression")
+@implementation("Raw Inflate", category="Compression")
 def raw_inflate(value: Data, args: Args) -> bytes:
     start = require_int(arg(args, 0, 0), name="start index")
     return zlib.decompress(to_bytes(value)[start:], wbits=-zlib.MAX_WBITS)
 
 
-@operation("Bzip2 Compress", category="Compression")
+@implementation("Bzip2 Compress", category="Compression")
 def bzip2_compress(value: Data, args: Args) -> bytes:
     level = require_int(arg(args, 0, 9), name="block size")
     return bz2.compress(to_bytes(value), compresslevel=level)
 
 
-@operation("Bzip2 Decompress", category="Compression")
+@implementation("Bzip2 Decompress", category="Compression")
 def bzip2_decompress(value: Data, _args: Args) -> bytes:
     return bz2.decompress(to_bytes(value))
 
 
-@operation("LZMA Compress", category="Compression")
+@implementation("LZMA Compress", category="Compression")
 def lzma_compress(value: Data, args: Args) -> bytes:
     preset = require_int(arg(args, 0, 6), name="preset")
     return lzma.compress(to_bytes(value), format=lzma.FORMAT_ALONE, preset=preset)
 
 
-@operation("LZMA Decompress", category="Compression")
+@implementation("LZMA Decompress", category="Compression")
 def lzma_decompress(value: Data, _args: Args) -> bytes:
     return lzma.decompress(to_bytes(value), format=lzma.FORMAT_AUTO)
 
 
-@operation("Zip", category="Compression")
+@implementation("Zip", category="Compression")
 def zip_archive(value: Data, args: Args) -> bytes:
     filename = str(arg(args, 0, "file.txt"))
     comment = str(arg(args, 1, ""))
@@ -131,7 +131,7 @@ def zip_archive(value: Data, args: Args) -> bytes:
     return output.getvalue()
 
 
-@operation("Unzip", category="Compression")
+@implementation("Unzip", category="Compression")
 def unzip_archive(value: Data, args: Args) -> bytes:
     password = str(arg(args, 0, ""))
     with zipfile.ZipFile(io.BytesIO(to_bytes(value))) as archive:
@@ -141,7 +141,7 @@ def unzip_archive(value: Data, args: Args) -> bytes:
         return archive.read(files[0], pwd=password.encode() if password else None)
 
 
-@operation("Tar", category="Compression")
+@implementation("Tar", category="Compression")
 def tar_archive(value: Data, args: Args) -> bytes:
     filename = str(arg(args, 0, "file.txt"))
     data = to_bytes(value)
@@ -155,7 +155,7 @@ def tar_archive(value: Data, args: Args) -> bytes:
     return output.getvalue()
 
 
-@operation("Untar", category="Compression")
+@implementation("Untar", category="Compression")
 def untar_archive(value: Data, _args: Args) -> bytes:
     with tarfile.open(fileobj=io.BytesIO(to_bytes(value)), mode="r:*") as archive:
         files = [member for member in archive.getmembers() if member.isfile()]

@@ -14,9 +14,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg, char_rep, require_int
+from .jpeg_decoder import decode_jpeg as _jpeg_decode
+from .jpeg_encoder import encode_jpeg as _jpeg_encode
 
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _Pixel = tuple[int, int, int, int]
@@ -211,6 +213,264 @@ def _ppm_encode(image: _Image) -> bytes:
     return f"P6\n{image.width} {image.height}\n255\n".encode() + raw
 
 
+def _tiff_values(data: bytes, endian: str, entry: bytes) -> tuple[int, ...]:
+    kind, count = struct.unpack(f"{endian}HI", entry[2:8])
+    widths = {1: 1, 3: 2, 4: 4}
+    if kind not in widths:
+        raise ValueError(f"Unsupported TIFF field type: {kind}")
+    width = widths[kind]
+    total = width * count
+    raw = entry[8:12] if total <= 4 else data[struct.unpack(f"{endian}I", entry[8:12])[0] :]
+    if len(raw) < total:
+        raise ValueError("Truncated TIFF field")
+    formats = {1: "B", 3: "H", 4: "I"}
+    return struct.unpack(f"{endian}{count}{formats[kind]}", raw[:total])
+
+
+def _tiff_decode(data: bytes) -> _Image:
+    if len(data) < 8 or data[:2] not in {b"II", b"MM"}:
+        raise ValueError("Input is not a TIFF image")
+    endian = "<" if data[:2] == b"II" else ">"
+    if struct.unpack(f"{endian}H", data[2:4])[0] != 42:
+        raise ValueError("Invalid TIFF signature")
+    directory_offset = struct.unpack(f"{endian}I", data[4:8])[0]
+    if directory_offset + 2 > len(data):
+        raise ValueError("Truncated TIFF directory")
+    count = struct.unpack(f"{endian}H", data[directory_offset : directory_offset + 2])[0]
+    fields: dict[int, tuple[int, ...]] = {}
+    for index in range(count):
+        start = directory_offset + 2 + index * 12
+        entry = data[start : start + 12]
+        if len(entry) != 12:
+            raise ValueError("Truncated TIFF directory entry")
+        fields[struct.unpack(f"{endian}H", entry[:2])[0]] = _tiff_values(data, endian, entry)
+
+    def scalar(tag: int, default: int = 0) -> int:
+        values = fields.get(tag)
+        return values[0] if values else default
+
+    width, height = scalar(256), scalar(257)
+    compression = scalar(259, 1)
+    photometric = scalar(262, 2)
+    samples = scalar(277, 1)
+    planar = scalar(284, 1)
+    bits = fields.get(258, (8,) * samples)
+    offsets, byte_counts = fields.get(273, ()), fields.get(279, ())
+    if width < 1 or height < 1 or width * height > 100_000_000:
+        raise ValueError("Invalid or unsafe TIFF dimensions")
+    if compression != 1 or planar != 1 or samples not in {1, 2, 3, 4}:
+        raise ValueError("Only uncompressed chunky 8-bit TIFF images are supported")
+    if any(size != 8 for size in bits) or len(offsets) != len(byte_counts) or not offsets:
+        raise ValueError("Unsupported or incomplete TIFF strip layout")
+    raw = bytearray()
+    for offset, byte_count in zip(offsets, byte_counts, strict=True):
+        strip = data[offset : offset + byte_count]
+        if len(strip) != byte_count:
+            raise ValueError("Truncated TIFF strip")
+        raw.extend(strip)
+    expected = width * height * samples
+    if len(raw) < expected:
+        raise ValueError("TIFF pixel data is shorter than its dimensions")
+    pixels: list[_Pixel] = []
+    for index in range(0, expected, samples):
+        sample = raw[index : index + samples]
+        if photometric in {0, 1} and samples in {1, 2}:
+            grey = sample[0] if photometric == 1 else 255 - sample[0]
+            pixels.append((grey, grey, grey, sample[1] if samples == 2 else 255))
+        elif photometric == 2 and samples in {3, 4}:
+            pixels.append((sample[0], sample[1], sample[2], sample[3] if samples == 4 else 255))
+        else:
+            raise ValueError("Unsupported TIFF photometric interpretation")
+    return _Image(width, height, pixels)
+
+
+def _tiff_encode(image: _Image) -> bytes:
+    entries = 11
+    directory_size = 2 + entries * 12 + 4
+    bits_offset = 8 + directory_size
+    pixel_offset = bits_offset + 8
+    raw = bytes(channel for pixel in image.pixels for channel in pixel)
+
+    def entry(tag: int, kind: int, count: int, value: int | bytes) -> bytes:
+        encoded = value if isinstance(value, bytes) else struct.pack("<I", value)
+        return struct.pack("<HHI", tag, kind, count) + encoded.ljust(4, b"\0")[:4]
+
+    fields = (
+        entry(256, 4, 1, image.width),
+        entry(257, 4, 1, image.height),
+        entry(258, 3, 4, bits_offset),
+        entry(259, 3, 1, struct.pack("<H", 1)),
+        entry(262, 3, 1, struct.pack("<H", 2)),
+        entry(273, 4, 1, pixel_offset),
+        entry(277, 3, 1, struct.pack("<H", 4)),
+        entry(278, 4, 1, image.height),
+        entry(279, 4, 1, len(raw)),
+        entry(284, 3, 1, struct.pack("<H", 1)),
+        entry(338, 3, 1, struct.pack("<H", 2)),
+    )
+    return (
+        b"II*\0\x08\0\0\0"
+        + struct.pack("<H", entries)
+        + b"".join(fields)
+        + b"\0" * 4
+        + struct.pack("<4H", 8, 8, 8, 8)
+        + raw
+    )
+
+
+def _gif_subblocks(data: bytes, position: int) -> tuple[bytes, int]:
+    output = bytearray()
+    while True:
+        if position >= len(data):
+            raise ValueError("Truncated GIF sub-block stream")
+        length = data[position]
+        position += 1
+        if not length:
+            return bytes(output), position
+        block = data[position : position + length]
+        if len(block) != length:
+            raise ValueError("Truncated GIF sub-block")
+        output.extend(block)
+        position += length
+
+
+def _gif_lzw(data: bytes, minimum_size: int, expected: int) -> list[int]:
+    if not 2 <= minimum_size <= 8:
+        raise ValueError("Invalid GIF LZW code size")
+    clear = 1 << minimum_size
+    end = clear + 1
+    code_size = minimum_size + 1
+    table = {index: bytes([index]) for index in range(clear)}
+    next_code = end + 1
+    bit_position = 0
+    previous: bytes | None = None
+    output = bytearray()
+
+    def read_code() -> int:
+        nonlocal bit_position
+        if bit_position + code_size > len(data) * 8:
+            raise ValueError("Truncated GIF LZW stream")
+        value = 0
+        for offset in range(code_size):
+            source_position = bit_position + offset
+            value |= ((data[source_position >> 3] >> (source_position & 7)) & 1) << offset
+        bit_position += code_size
+        return value
+
+    while len(output) < expected:
+        code = read_code()
+        if code == clear:
+            table = {index: bytes([index]) for index in range(clear)}
+            code_size = minimum_size + 1
+            next_code = end + 1
+            previous = None
+            continue
+        if code == end:
+            break
+        if code in table:
+            entry = table[code]
+        elif code == next_code and previous is not None:
+            entry = previous + previous[:1]
+        else:
+            raise ValueError("Invalid GIF LZW code")
+        output.extend(entry)
+        if previous is not None and next_code < 4096:
+            table[next_code] = previous + entry[:1]
+            next_code += 1
+            if next_code == 1 << code_size and code_size < 12:
+                code_size += 1
+        previous = entry
+    if len(output) < expected:
+        raise ValueError("GIF pixel stream is shorter than its image descriptor")
+    return list(output[:expected])
+
+
+def _gif_decode(data: bytes) -> _Image:
+    if len(data) < 13 or data[:6] not in {b"GIF87a", b"GIF89a"}:
+        raise ValueError("Input is not a GIF image")
+    width, height, packed, background = struct.unpack("<HHBB", data[6:12])
+    if width < 1 or height < 1 or width * height > 100_000_000:
+        raise ValueError("Invalid or unsafe GIF dimensions")
+    position = 13
+
+    def colour_table(size: int) -> list[tuple[int, int, int]]:
+        nonlocal position
+        raw = data[position : position + size * 3]
+        if len(raw) != size * 3:
+            raise ValueError("Truncated GIF colour table")
+        position += len(raw)
+        return [
+            cast(tuple[int, int, int], tuple(raw[index : index + 3]))
+            for index in range(0, len(raw), 3)
+        ]
+
+    global_colours = colour_table(1 << ((packed & 7) + 1)) if packed & 0x80 else []
+    transparent: int | None = None
+    while position < len(data):
+        marker = data[position]
+        position += 1
+        if marker == 0x3B:
+            break
+        if marker == 0x21:
+            if position >= len(data):
+                raise ValueError("Truncated GIF extension")
+            label = data[position]
+            position += 1
+            payload, position = _gif_subblocks(data, position)
+            if label == 0xF9 and len(payload) == 4 and payload[0] & 1:
+                transparent = payload[3]
+            continue
+        if marker != 0x2C or position + 9 > len(data):
+            raise ValueError(f"Unsupported GIF block marker: 0x{marker:02x}")
+        left, top, image_width, image_height, image_packed = struct.unpack(
+            "<HHHHB", data[position : position + 9]
+        )
+        position += 9
+        invalid_descriptor = (
+            not image_width
+            or not image_height
+            or left + image_width > width
+            or top + image_height > height
+        )
+        if invalid_descriptor:
+            raise ValueError("Invalid GIF image descriptor")
+        colours = (
+            colour_table(1 << ((image_packed & 7) + 1)) if image_packed & 0x80 else global_colours
+        )
+        if not colours or position >= len(data):
+            raise ValueError("GIF image has no colour table")
+        minimum_size = data[position]
+        compressed, position = _gif_subblocks(data, position + 1)
+        indices = _gif_lzw(compressed, minimum_size, image_width * image_height)
+        if image_packed & 0x40:
+            rows = [
+                row
+                for start, step in ((0, 8), (4, 8), (2, 4), (1, 2))
+                for row in range(start, image_height, step)
+            ]
+            reordered = [0] * len(indices)
+            for source_row, target_row in enumerate(rows):
+                start = source_row * image_width
+                reordered[target_row * image_width : (target_row + 1) * image_width] = indices[
+                    start : start + image_width
+                ]
+            indices = reordered
+        background_colour = (
+            global_colours[background] if background < len(global_colours) else (0, 0, 0)
+        )
+        pixels: list[_Pixel] = [(*background_colour, 255)] * (width * height)
+        for y in range(image_height):
+            for x in range(image_width):
+                colour_index = indices[y * image_width + x]
+                if colour_index >= len(colours):
+                    raise ValueError("GIF pixel references an unknown colour")
+                red, green, blue = colours[colour_index]
+                alpha = 0 if colour_index == transparent else 255
+                pixels[(top + y) * width + left + x] = (red, green, blue, alpha)
+        return _Image(width, height, pixels)
+    raise ValueError("GIF contains no image frame")
+
+
 def _image(value: Data) -> tuple[_Image, dict[str, bytes]]:
     data = to_bytes(value)
     if data.startswith(_PNG_SIGNATURE):
@@ -219,7 +479,14 @@ def _image(value: Data) -> tuple[_Image, dict[str, bytes]]:
         return _bmp_decode(data), {}
     if data.startswith(b"P6"):
         return _ppm_decode(data), {}
-    raise ValueError("Unsupported image type; use PNG, uncompressed BMP, or PPM")
+    if data.startswith(b"\xff\xd8"):
+        width, height, pixels = _jpeg_decode(data)
+        return _Image(width, height, pixels), {}
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return _gif_decode(data), {}
+    if data[:4] in {b"II*\0", b"MM\0*"}:
+        return _tiff_decode(data), {}
+    raise ValueError("Unsupported image type; use PNG, BMP, PPM, or TIFF")
 
 
 def _output(image: _Image, metadata: dict[str, bytes] | None = None) -> bytes:
@@ -272,7 +539,7 @@ def _resize(image: _Image, width: int, height: int, smooth: bool = True) -> _Ima
     return _Image(width, height, pixels)
 
 
-@operation("Resize Image", category="Image")
+@implementation("Resize Image", category="Image")
 def resize_image(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     width = float(arg(args, 0, 100))
@@ -318,17 +585,17 @@ def _fit(value: Data, args: Args, cover: bool) -> bytes:
     return _output(_Image(width, height, pixels), metadata)
 
 
-@operation("Contain Image", category="Image")
+@implementation("Contain Image", category="Image")
 def contain_image(value: Data, args: Args) -> Data:
     return _fit(value, args, False)
 
 
-@operation("Cover Image", category="Image")
+@implementation("Cover Image", category="Image")
 def cover_image(value: Data, args: Args) -> Data:
     return _fit(value, args, True)
 
 
-@operation("Crop Image", category="Image")
+@implementation("Crop Image", category="Image")
 def crop_image(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     x = require_int(arg(args, 0, 0), name="x position")
@@ -366,7 +633,7 @@ def crop_image(value: Data, args: Args) -> Data:
     return _output(_Image(width, height, pixels), metadata)
 
 
-@operation("Flip Image", category="Image")
+@implementation("Flip Image", category="Image")
 def flip_image(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     horizontal = str(arg(args, 0, "Horizontal")) == "Horizontal"
@@ -380,7 +647,7 @@ def flip_image(value: Data, args: Args) -> Data:
     return _output(_Image(image.width, image.height, pixels), metadata)
 
 
-@operation("Rotate Image", category="Image")
+@implementation("Rotate Image", category="Image")
 def rotate_image(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     degrees = float(arg(args, 0, 90)) % 360
@@ -444,13 +711,13 @@ def _box_blur(image: _Image, radius: int) -> _Image:
     return _Image(image.width, image.height, pixels)
 
 
-@operation("Blur Image", category="Image")
+@implementation("Blur Image", category="Image")
 def blur_image(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     return _output(_box_blur(image, require_int(arg(args, 0, 5), name="blur amount")), metadata)
 
 
-@operation("Sharpen Image", category="Image")
+@implementation("Sharpen Image", category="Image")
 def sharpen_image(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     radius = max(1, require_int(arg(args, 0, 2), name="radius"))
@@ -473,7 +740,7 @@ def sharpen_image(value: Data, args: Args) -> Data:
     return _output(_Image(image.width, image.height, pixels), metadata)
 
 
-@operation("Image Brightness / Contrast", category="Image")
+@implementation("Image Brightness / Contrast", category="Image")
 def image_brightness_contrast(value: Data, args: Args) -> Data:
     brightness = max(-100.0, min(100.0, float(arg(args, 0, 0)))) * 2.55
     contrast = max(-100.0, min(100.0, float(arg(args, 1, 0))))
@@ -489,7 +756,7 @@ def image_brightness_contrast(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Image Filter", category="Image")
+@implementation("Image Filter", category="Image")
 def image_filter(value: Data, args: Args) -> Data:
     filter_type = str(arg(args, 0, "Greyscale"))
 
@@ -508,7 +775,7 @@ def image_filter(value: Data, args: Args) -> Data:
     return _map_pixels(value, transform)
 
 
-@operation("Image Hue/Saturation/Lightness", category="Image")
+@implementation("Image Hue/Saturation/Lightness", category="Image")
 def image_hsl(value: Data, args: Args) -> Data:
     hue = float(arg(args, 0, 0)) / 360
     saturation = float(arg(args, 1, 0)) / 100
@@ -524,7 +791,7 @@ def image_hsl(value: Data, args: Args) -> Data:
     return _map_pixels(value, transform)
 
 
-@operation("Image Opacity", category="Image")
+@implementation("Image Opacity", category="Image")
 def image_opacity(value: Data, args: Args) -> Data:
     opacity = max(0.0, min(100.0, float(arg(args, 0, 100)))) / 100
     return _map_pixels(
@@ -532,7 +799,7 @@ def image_opacity(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Invert Image", category="Image")
+@implementation("Invert Image", category="Image")
 def invert_image(value: Data, args: Args) -> Data:
     del args
     return _map_pixels(
@@ -540,7 +807,7 @@ def invert_image(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Normalise Image", category="Image")
+@implementation("Normalise Image", category="Image")
 def normalise_image(value: Data, args: Args) -> Data:
     del args
     image, metadata = _image(value)
@@ -566,7 +833,7 @@ def normalise_image(value: Data, args: Args) -> Data:
     return _output(_Image(image.width, image.height, pixels), metadata)
 
 
-@operation("Dither Image", category="Image")
+@implementation("Dither Image", category="Image")
 def dither_image(value: Data, args: Args) -> Data:
     del args
     image, metadata = _image(value)
@@ -593,7 +860,7 @@ def dither_image(value: Data, args: Args) -> Data:
     return _output(_Image(image.width, image.height, pixels), metadata)
 
 
-@operation("Randomize Colour Palette", category="Image")
+@implementation("Randomize Colour Palette", category="Image")
 def randomize_colour_palette(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     generator = random.Random(str(arg(args, 0, "")))
@@ -606,7 +873,7 @@ def randomize_colour_palette(value: Data, args: Args) -> Data:
     )
 
 
-@operation("View Bit Plane", category="Image")
+@implementation("View Bit Plane", category="Image")
 def view_bit_plane(value: Data, args: Args) -> Data:
     colour = str(arg(args, 0, "Red"))
     bit = require_int(arg(args, 1, 0), name="bit")
@@ -619,7 +886,7 @@ def view_bit_plane(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Split Colour Channels", category="Image")
+@implementation("Split Colour Channels", category="Image")
 def split_colour_channels(value: Data, args: Args) -> Data:
     del args
     image, metadata = _image(value)
@@ -633,7 +900,7 @@ def split_colour_channels(value: Data, args: Args) -> Data:
     return _output(_Image(width, image.height, pixels), metadata)
 
 
-@operation("Extract RGBA", category="Image")
+@implementation("Extract RGBA", category="Image")
 def extract_rgba(value: Data, args: Args) -> Data:
     image, _ = _image(value)
     delimiter = char_rep(arg(args, 0, "Space"))
@@ -642,7 +909,7 @@ def extract_rgba(value: Data, args: Args) -> Data:
     return delimiter.join(str(channel) for pixel in image.pixels for channel in pixel[:width])
 
 
-@operation("Extract LSB", category="Image")
+@implementation("Extract LSB", category="Image")
 def extract_lsb(value: Data, args: Args) -> Data:
     image, _ = _image(value)
     names = [str(arg(args, index, "Red" if index == 0 else "")) for index in range(4)]
@@ -662,7 +929,7 @@ def extract_lsb(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Convert Image Format", category="Image")
+@implementation("Convert Image Format", category="Image")
 def convert_image_format(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     output_format = str(arg(args, 0, "PNG"))
@@ -670,20 +937,24 @@ def convert_image_format(value: Data, args: Args) -> Data:
         return _png_encode(image, metadata, require_int(arg(args, 3, 9), name="deflate level"))
     if output_format == "BMP":
         return _bmp_encode(image)
-    if output_format in {"PPM", "JPEG", "TIFF"}:
-        # PPM is the dependency-free lossless interchange fallback for formats needing codecs.
+    if output_format == "TIFF":
+        return _tiff_encode(image)
+    if output_format == "JPEG":
+        quality = require_int(arg(args, 1, 80), name="JPEG quality")
+        return _jpeg_encode(image.width, image.height, image.pixels, quality)
+    if output_format == "PPM":
         return _ppm_encode(image)
     raise ValueError(f"Unsupported image output format: {output_format}")
 
 
-@operation("Render Image", category="Image")
+@implementation("Render Image", category="Image")
 def render_image(value: Data, args: Args) -> Data:
     del args
     image, metadata = _image(value)
     return _png_encode(image, metadata)
 
 
-@operation("Generate Image", category="Image")
+@implementation("Generate Image", category="Image")
 def generate_image(value: Data, args: Args) -> Data:
     mode = str(arg(args, 0, "Greyscale"))
     scale = max(1, require_int(arg(args, 1, 8), name="pixel scale"))
@@ -729,7 +1000,7 @@ _FONT = {
 }
 
 
-@operation("Add Text To Image", category="Image")
+@implementation("Add Text To Image", category="Image")
 def add_text_to_image(value: Data, args: Args) -> Data:
     image, metadata = _image(value)
     text = str(arg(args, 0, ""))
@@ -795,7 +1066,7 @@ def _qr_like_matrix(data: bytes) -> list[list[bool]]:
     return [[bool(item) for item in row] for row in matrix]
 
 
-@operation("Generate QR Code", category="Image")
+@implementation("Generate QR Code", category="Image")
 def generate_qr_code(value: Data, args: Args) -> Data:
     output_format = str(arg(args, 0, "PNG"))
     module_size = max(1, require_int(arg(args, 1, 5), name="module size"))
@@ -824,7 +1095,7 @@ def generate_qr_code(value: Data, args: Args) -> Data:
     return _png_encode(image, {"pychef-qr": encoded})
 
 
-@operation("Parse QR Code", category="Image")
+@implementation("Parse QR Code", category="Image")
 def parse_qr_code(value: Data, args: Args) -> Data:
     del args
     _, metadata = _image(value)

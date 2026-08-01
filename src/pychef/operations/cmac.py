@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg
 from .aes import _encrypt_block as _aes_encrypt_block
@@ -43,7 +43,7 @@ def _cmac(data: bytes, block_size: int, reduction: int, encrypt: _BlockEncryptor
     return encrypt(_xor(state, last))
 
 
-@operation("CMAC", category="Crypto")
+@implementation("CMAC", category="Crypto")
 def cmac(value: Data, args: Args) -> Data:
     key = _toggle_bytes(arg(args, 0, {"option": "Hex", "string": ""}))
     algorithm = str(arg(args, 1, "AES"))

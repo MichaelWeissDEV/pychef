@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import TypeVar
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg
 
@@ -21,7 +21,7 @@ def _unique(values: list[_T]) -> list[_T]:
     return output
 
 
-@operation("RAKE", category="Analysis")
+@implementation("RAKE", category="Analysis")
 def rake(value: Data, args: Args) -> Data:
     word_delimiter = re.compile(str(arg(args, 0, r"\s")))
     sentence_delimiter = re.compile(str(arg(args, 1, r"\.\s|\n")))

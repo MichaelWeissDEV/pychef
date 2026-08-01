@@ -9,7 +9,7 @@ import hmac
 import secrets
 import time
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg
 from .aes import _block_mode
@@ -34,7 +34,7 @@ def _token_bytes(value: Data) -> bytes:
         raise ValueError("Error: Invalid token") from exc
 
 
-@operation("Fernet Encrypt", category="Encryption")
+@implementation("Fernet Encrypt", category="Encryption")
 def fernet_encrypt(value: Data, args: Args) -> Data:
     secret = _secret(str(arg(args, 0, "")))
     signing_key, encryption_key = secret[:16], secret[16:]
@@ -53,7 +53,7 @@ def fernet_encrypt(value: Data, args: Args) -> Data:
     return base64.urlsafe_b64encode(payload + signature).decode()
 
 
-@operation("Fernet Decrypt", category="Encryption")
+@implementation("Fernet Decrypt", category="Encryption")
 def fernet_decrypt(value: Data, args: Args) -> Data:
     secret = _secret(str(arg(args, 0, "")))
     token = _token_bytes(value)

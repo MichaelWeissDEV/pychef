@@ -9,7 +9,7 @@ import struct
 import zlib
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep
 
@@ -122,14 +122,43 @@ def _u29_encode(value: int) -> bytes:
     )
 
 
-def _amf3_string(reader: _Reader) -> str:
+class _AMF3Context:
+    def __init__(self) -> None:
+        self.strings: list[str] = []
+        self.objects: list[Any] = []
+        self.traits: list[tuple[str, bool, bool, tuple[str, ...]]] = []
+
+
+def _amf3_reference(values: list[Any], index: int, name: str) -> Any:
+    if not 0 <= index < len(values):
+        raise ValueError(f"Invalid AMF3 {name} reference: {index}")
+    return values[index]
+
+
+def _amf3_string(reader: _Reader, context: _AMF3Context) -> str:
     header = _u29_decode(reader)
     if not header & 1:
-        raise ValueError("AMF3 string references are not supported")
-    return reader.take(header >> 1).decode("utf-8", "replace")
+        return str(_amf3_reference(context.strings, header >> 1, "string"))
+    value = reader.take(header >> 1).decode("utf-8", "replace")
+    if value:
+        context.strings.append(value)
+    return value
 
 
-def _amf3_decode(reader: _Reader) -> Any:
+def _amf3_object_bytes(reader: _Reader, context: _AMF3Context, name: str) -> bytes:
+    header = _u29_decode(reader)
+    if not header & 1:
+        value = _amf3_reference(context.objects, header >> 1, name)
+        if not isinstance(value, bytes):
+            raise ValueError(f"AMF3 {name} reference has the wrong type")
+        return value
+    value = reader.take(header >> 1)
+    context.objects.append(value)
+    return value
+
+
+def _amf3_decode(reader: _Reader, context: _AMF3Context | None = None) -> Any:
+    context = context or _AMF3Context()
     marker = reader.byte()
     if marker in {0, 1}:
         return None
@@ -143,39 +172,102 @@ def _amf3_decode(reader: _Reader) -> Any:
     if marker == 5:
         return struct.unpack(">d", reader.take(8))[0]
     if marker == 6:
-        return _amf3_string(reader)
+        return _amf3_string(reader, context)
+    if marker in {7, 11}:
+        value = _amf3_object_bytes(reader, context, "XML").decode("utf-8", "replace")
+        return {"$xml": value}
+    if marker == 8:
+        header = _u29_decode(reader)
+        if not header & 1:
+            return _amf3_reference(context.objects, header >> 1, "date")
+        result = {"$date": struct.unpack(">d", reader.take(8))[0]}
+        context.objects.append(result)
+        return result
     if marker == 9:
         header = _u29_decode(reader)
         if not header & 1:
-            raise ValueError("AMF3 array references are not supported")
+            return _amf3_reference(context.objects, header >> 1, "array")
         dense_length = header >> 1
         associative: dict[str, Any] = {}
+        reference_index = len(context.objects)
+        context.objects.append(associative)
         while True:
-            key = _amf3_string(reader)
+            key = _amf3_string(reader, context)
             if not key:
                 break
-            associative[key] = _amf3_decode(reader)
-        dense = [_amf3_decode(reader) for _ in range(dense_length)]
-        return dense if not associative else {**associative, "$dense": dense}
+            associative[key] = _amf3_decode(reader, context)
+        dense = [_amf3_decode(reader, context) for _ in range(dense_length)]
+        result: Any = dense if not associative else {**associative, "$dense": dense}
+        context.objects[reference_index] = result
+        return result
     if marker == 10:
-        traits = _u29_decode(reader)
-        if traits & 3 != 3:
-            raise ValueError("AMF3 object references are not supported")
-        dynamic = bool(traits & 8)
-        sealed_count = traits >> 4
-        _amf3_string(reader)
-        names = [_amf3_string(reader) for _ in range(sealed_count)]
-        result = {name: _amf3_decode(reader) for name in names}
+        header = _u29_decode(reader)
+        if not header & 1:
+            return _amf3_reference(context.objects, header >> 1, "object")
+        if header & 3 == 1:
+            class_name, dynamic, externalizable, names = _amf3_reference(
+                context.traits, header >> 2, "trait"
+            )
+        else:
+            dynamic = bool(header & 8)
+            externalizable = bool(header & 4)
+            sealed_count = header >> 4
+            class_name = _amf3_string(reader, context)
+            names = tuple(_amf3_string(reader, context) for _ in range(sealed_count))
+            context.traits.append((class_name, dynamic, externalizable, names))
+        if externalizable:
+            raise ValueError("AMF3 externalizable objects require a class-specific decoder")
+        result: dict[str, Any] = {}
+        if class_name:
+            result["$class"] = class_name
+        context.objects.append(result)
+        for name in names:
+            result[name] = _amf3_decode(reader, context)
         if dynamic:
             while True:
-                name = _amf3_string(reader)
+                name = _amf3_string(reader, context)
                 if not name:
                     break
-                result[name] = _amf3_decode(reader)
+                result[name] = _amf3_decode(reader, context)
         return result
     if marker == 12:
+        value = _amf3_object_bytes(reader, context, "byte array")
+        return {"$bytes": base64.b64encode(value).decode()}
+    if marker in {13, 14, 15, 16}:
         header = _u29_decode(reader)
-        return {"$bytes": base64.b64encode(reader.take(header >> 1)).decode()}
+        if not header & 1:
+            return _amf3_reference(context.objects, header >> 1, "vector")
+        length = header >> 1
+        fixed = bool(reader.byte())
+        type_name = _amf3_string(reader, context) if marker == 16 else ""
+        if marker == 13:
+            values = [struct.unpack(">i", reader.take(4))[0] for _ in range(length)]
+            kind = "int"
+        elif marker == 14:
+            values = [struct.unpack(">I", reader.take(4))[0] for _ in range(length)]
+            kind = "uint"
+        elif marker == 15:
+            values = [struct.unpack(">d", reader.take(8))[0] for _ in range(length)]
+            kind = "double"
+        else:
+            values = [_amf3_decode(reader, context) for _ in range(length)]
+            kind = type_name or "object"
+        result = {"$vector": kind, "$fixed": fixed, "$values": values}
+        context.objects.append(result)
+        return result
+    if marker == 17:
+        header = _u29_decode(reader)
+        if not header & 1:
+            return _amf3_reference(context.objects, header >> 1, "dictionary")
+        length = header >> 1
+        weak = bool(reader.byte())
+        result = {"$weak": weak, "$entries": []}
+        context.objects.append(result)
+        entries = result["$entries"]
+        assert isinstance(entries, list)
+        for _ in range(length):
+            entries.append([_amf3_decode(reader, context), _amf3_decode(reader, context)])
+        return result
     raise ValueError(f"Unsupported AMF3 marker: {marker}")
 
 
@@ -212,14 +304,14 @@ def _amf3_encode(value: Any) -> bytes:
     raise ValueError(f"Unsupported AMF3 value: {type(value).__name__}")
 
 
-@operation("AMF Decode", category="Encodings")
+@implementation("AMF Decode", category="Encodings")
 def amf_decode(value: Data, args: Args) -> Data:
     reader = _Reader(to_bytes(value))
     result = _amf0_decode(reader) if str(arg(args, 0, "AMF3")) == "AMF0" else _amf3_decode(reader)
     return _json_output(result)
 
 
-@operation("AMF Encode", category="Encodings")
+@implementation("AMF Encode", category="Encodings")
 def amf_encode(value: Data, args: Args) -> Data:
     parsed = _json_input(value)
     return _amf0_encode(parsed) if str(arg(args, 0, "AMF3")) == "AMF0" else _amf3_encode(parsed)
@@ -328,14 +420,14 @@ def _proto_encode_item(number: int, field_type: str, value: Any) -> bytes:
     return _varint_encode(number << 3) + _varint_encode(integer)
 
 
-@operation("Protobuf Decode", category="Serialise")
+@implementation("Protobuf Decode", category="Serialise")
 def protobuf_decode(value: Data, args: Args) -> Data:
     schema = str(arg(args, 0, ""))
     show_types = bool(arg(args, 2, False))
     return _json_output(_proto_decode(to_bytes(value), schema, show_types))
 
 
-@operation("Protobuf Encode", category="Serialise")
+@implementation("Protobuf Encode", category="Serialise")
 def protobuf_encode(value: Data, args: Args) -> Data:
     schema = str(arg(args, 0, ""))
     fields = _proto_schema(schema)
@@ -414,7 +506,7 @@ def _avro_value(reader: _Reader, schema: Any) -> Any:
     raise ValueError(f"Unsupported Avro schema type: {schema}")
 
 
-@operation("Avro to JSON", category="Serialise")
+@implementation("Avro to JSON", category="Serialise")
 def avro_to_json(value: Data, args: Args) -> Data:
     data = to_bytes(value)
     if not data:
@@ -482,7 +574,7 @@ def _carve_end(data: bytes, offset: int, extension: str) -> int:
     return len(data) if position < 0 else position + len(marker)
 
 
-@operation("Scan for Embedded Files", category="Forensics")
+@implementation("Scan for Embedded Files", category="Forensics")
 def scan_for_embedded_files(value: Data, args: Args) -> Data:
     del args
     found = _scan(to_bytes(value))
@@ -500,7 +592,7 @@ def scan_for_embedded_files(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Extract Files", category="Forensics")
+@implementation("Extract Files", category="Forensics")
 def extract_files(value: Data, args: Args) -> Data:
     data = to_bytes(value)
     minimum = int(args[-1]) if args and isinstance(args[-1], (int, float)) else 100
@@ -521,7 +613,7 @@ def extract_files(value: Data, args: Args) -> Data:
     return _json_output(files)
 
 
-@operation("File Tree", category="Text")
+@implementation("File Tree", category="Text")
 def file_tree(value: Data, args: Args) -> Data:
     path_delimiter = str(arg(args, 0, "/"))
     entry_delimiter = char_rep(arg(args, 1, "Line feed"), "\n")
@@ -576,13 +668,13 @@ def _id3(data: bytes) -> dict[str, Any]:
     return result
 
 
-@operation("Extract ID3", category="Forensics")
+@implementation("Extract ID3", category="Forensics")
 def extract_id3(value: Data, args: Args) -> Data:
     del args
     return _json_output(_id3(to_bytes(value)))
 
 
-@operation("Extract Audio Metadata", category="Forensics")
+@implementation("Extract Audio Metadata", category="Forensics")
 def extract_audio_metadata(value: Data, args: Args) -> Data:
     data = to_bytes(value)
     if not data:
@@ -674,7 +766,7 @@ def _exif_tags(tiff: bytes) -> dict[str, Any]:
     return tags
 
 
-@operation("Extract EXIF", category="Image")
+@implementation("Extract EXIF", category="Image")
 def extract_exif(value: Data, args: Args) -> Data:
     del args
     data = to_bytes(value)
@@ -687,7 +779,7 @@ def extract_exif(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Remove EXIF", category="Image")
+@implementation("Remove EXIF", category="Image")
 def remove_exif(value: Data, args: Args) -> Data:
     del args
     data = to_bytes(value)

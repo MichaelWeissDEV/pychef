@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg
 
@@ -80,7 +80,7 @@ def _codec(label: object) -> str | None:
     return aliases.get(normalized, text)
 
 
-@operation("Encode text", category="Encodings")
+@implementation("Encode text", category="Encodings")
 def encode_text(value: Data, args: Args) -> Data:
     codec = _codec(arg(args, 0, "UTF-8 (65001)"))
     if codec is None:
@@ -91,7 +91,7 @@ def encode_text(value: Data, args: Args) -> Data:
         raise ValueError(f"unsupported encoding: {codec}") from exc
 
 
-@operation("Decode text", category="Encodings")
+@implementation("Decode text", category="Encodings")
 def decode_text(value: Data, args: Args) -> str:
     codec = _codec(arg(args, 0, "UTF-8 (65001)"))
     if codec is None:

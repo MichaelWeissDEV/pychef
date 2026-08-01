@@ -12,9 +12,10 @@ import time
 from typing import Any
 from urllib.parse import quote
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
+from .ripemd_core import digest as _ripemd_digest
 
 _MD2_TABLE = bytes(
     [
@@ -376,35 +377,33 @@ def _sha0(data: bytes) -> bytes:
     return struct.pack(">5I", *state)
 
 
-@operation("MD2", category="Hashing")
+@implementation("MD2", category="Hashing")
 def md2(value: Data, _args: Args) -> str:
     return _md2(to_bytes(value)).hex()
 
 
-@operation("MD4", category="Hashing")
+@implementation("MD4", category="Hashing")
 def md4(value: Data, _args: Args) -> str:
     return _md4(to_bytes(value)).hex()
 
 
-@operation("SHA0", category="Hashing")
+@implementation("SHA0", category="Hashing")
 def sha0(value: Data, _args: Args) -> str:
     return _sha0(to_bytes(value)).hex()
 
 
-@operation("NT Hash", category="Hashing")
+@implementation("NT Hash", category="Hashing")
 def nt_hash(value: Data, _args: Args) -> str:
-    return _md4(to_text(value).encode("utf-16le")).hex()
+    return _md4(to_text(value).encode("utf-16le")).hex().upper()
 
 
-@operation("RIPEMD", category="Hashing")
+@implementation("RIPEMD", category="Hashing")
 def ripemd(value: Data, args: Args) -> str:
-    size = str(arg(args, 0, "160"))
-    if size != "160":
-        raise ValueError("this Python/OpenSSL build only exposes RIPEMD-160")
-    return hashlib.new("ripemd160", to_bytes(value)).hexdigest()
+    size = require_int(arg(args, 0, "160"), name="digest size")
+    return _ripemd_digest(to_bytes(value), size).hex()
 
 
-@operation("SM3", category="Hashing")
+@implementation("SM3", category="Hashing")
 def sm3(value: Data, _args: Args) -> str:
     return hashlib.new("sm3", to_bytes(value)).hexdigest()
 
@@ -426,7 +425,7 @@ def _toggle_bytes(value: Any) -> bytes:
     return text.encode()
 
 
-@operation("Derive PBKDF2 key", category="KDF")
+@implementation("Derive PBKDF2 key", category="KDF")
 def derive_pbkdf2(value: Data, args: Args) -> str:
     passphrase = _toggle_bytes(arg(args, 0, {"string": "", "option": "UTF8"}))
     key_bits = require_int(arg(args, 1, 128))
@@ -436,7 +435,7 @@ def derive_pbkdf2(value: Data, args: Args) -> str:
     return hashlib.pbkdf2_hmac(algorithm, passphrase, salt, iterations, key_bits // 8).hex()
 
 
-@operation("Derive HKDF key", category="KDF")
+@implementation("Derive HKDF key", category="KDF")
 def derive_hkdf(value: Data, args: Args) -> str:
     salt = _toggle_bytes(arg(args, 0, {"string": "", "option": "Hex"}))
     info = _toggle_bytes(arg(args, 1, {"string": "", "option": "Hex"}))
@@ -462,7 +461,7 @@ def derive_hkdf(value: Data, args: Args) -> str:
     return result[:length].hex()
 
 
-@operation("Derive EVP key", category="KDF")
+@implementation("Derive EVP key", category="KDF")
 def derive_evp(value: Data, args: Args) -> str:
     passphrase = _toggle_bytes(arg(args, 0, {"string": "", "option": "UTF8"}))
     key_bits = require_int(arg(args, 1, 128))
@@ -507,7 +506,7 @@ def _otp_output(
     return f"URI: {uri}\n\nPassword: {_hotp(secret, counter, digits)}"
 
 
-@operation("Generate HOTP", category="KDF")
+@implementation("Generate HOTP", category="KDF")
 def generate_hotp(value: Data, args: Args) -> str:
     return _otp_output(
         value,
@@ -518,7 +517,7 @@ def generate_hotp(value: Data, args: Args) -> str:
     )
 
 
-@operation("Generate TOTP", category="KDF")
+@implementation("Generate TOTP", category="KDF")
 def generate_totp(value: Data, args: Args) -> str:
     digits = require_int(arg(args, 1, 6))
     epoch = require_int(arg(args, 2, 0))
@@ -527,7 +526,7 @@ def generate_totp(value: Data, args: Args) -> str:
     return _otp_output(value, str(arg(args, 0, "Account")), digits, counter, "totp", period)
 
 
-@operation("Luhn Checksum", category="Hashing")
+@implementation("Luhn Checksum", category="Hashing")
 def luhn_checksum(value: Data, args: Args) -> str:
     radix = require_int(arg(args, 0, 10))
     text = to_text(value).strip()
@@ -562,7 +561,7 @@ def luhn_checksum(value: Data, args: Args) -> str:
     )
 
 
-@operation("Analyse hash", category="Analysis")
+@implementation("Analyse hash", category="Analysis")
 def analyse_hash(value: Data, _args: Args) -> str:
     text = "".join(to_text(value).split())
     if not text or any(character not in "0123456789abcdefABCDEF" for character in text):
@@ -587,7 +586,7 @@ def analyse_hash(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Extract hashes", category="Extraction")
+@implementation("Extract hashes", category="Extraction")
 def extract_hashes(value: Data, args: Args) -> str:
     length = require_int(arg(args, 0, 40))
     all_hashes = bool(arg(args, 1, False))

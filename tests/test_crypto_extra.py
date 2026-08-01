@@ -22,13 +22,56 @@ def test_official_legacy_hash_vectors(operation: str, expected: str) -> None:
 
 
 def test_additional_hash_vectors() -> None:
-    assert bake("password", ["NT Hash"]) == "8846f7eaee8fb117ad06bdd830b7586c"
+    assert bake("password", ["NT Hash"]) == "8846F7EAEE8FB117AD06BDD830B7586C"
     assert bake("abc", ["SM3"]) == (
         "66c7f0f462eeedd9d1f2d46bdc10e4e24167c4875cf2f7a2297da02b8f4ba8e0"
     )
     assert bake("abc", [{"op": "RIPEMD", "args": ["160"]}]) == (
         "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc"
     )
+
+
+def test_official_nt_and_lm_hash_vectors() -> None:
+    value = "QWERTYUIOPASDFGHJKLZXCVBNM1234567890!@#$%^&*()_+.,?/"
+    assert bake(value, ["NT Hash"]) == "C5FA1C40E55734A8E528DBFE21766D23"
+    assert bake(value, ["LM Hash"]) == "6D9DF16655336CA75A3C13DD18BA8156"
+
+
+@pytest.mark.parametrize(
+    ("bits", "expected"),
+    [
+        (128, "cdf26213a150dc3ecb610f18f6b38b46"),
+        (160, "9c1185a5c5e9fc54612808977ee8f548b2258d31"),
+        (256, "02ba4c4e5f8ecd1877fc52d64d30e37a2d9774fb1e5d026380ae0168e3c5522d"),
+        (
+            320,
+            "22d65d5661536cdc75c1fdf5c6de7b41b9f27325ebc61e8557177d705a0ec880151c3a32a00899b8",
+        ),
+    ],
+)
+def test_ripemd_empty_standard_vectors(bits: int, expected: str) -> None:
+    assert bake("", [{"op": "RIPEMD", "args": [bits]}]) == expected
+
+
+@pytest.mark.parametrize(
+    ("bits", "expected"),
+    [
+        (128, "f1abb5083c9ff8a9dbbca9cd2b11fead"),
+        (160, "5e52fee47e6b070565f74372468cdc699de89107"),
+        (256, "fe0289110d07daeee9d9500e14c57787d9083f6ba10e6bcb256f86bb4fe7b981"),
+        (
+            320,
+            "3b0a2e841e589cf583634a5dd265d2b5d497c4cc44b241e34e0f62d03e98c1b9dc72970b9bc20eb5",
+        ),
+    ],
+)
+def test_ripemd_cyberchef_vectors(bits: int, expected: str) -> None:
+    assert bake("test", [{"op": "RIPEMD", "args": [bits]}]) == expected
+
+
+def test_ripemd_rejects_unknown_size() -> None:
+    with pytest.raises(OperationError, match="128, 160, 256, or 320"):
+        bake("abc", [{"op": "RIPEMD", "args": [192]}])
 
 
 def test_official_pbkdf2_vector() -> None:

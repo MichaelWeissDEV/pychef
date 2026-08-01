@@ -14,10 +14,14 @@ ported upstream vectors currently verified by PyChef.
 
 Some callable operations currently provide dependency-free format subsets or
 compatibility fallbacks. The most important parity work still open within the
-registered set is MD6/Snefru/Streebog/Whirlpool, Twofish and advanced GOST,
-general QR decoding, JPEG/TIFF codecs, complete historical-machine parity,
-full JavaScript/Jq/Jsonata and YARA grammars, general-purpose OCR, complete
-instruction decoding, and interoperable OpenPGP packet support.
+registered set is general QR decoding; palette/interlaced PNG,
+progressive/CMYK JPEG, and compressed TIFF; complete historical-machine
+parity; full JavaScript/Jq/Jsonata and YARA grammars; general-purpose OCR;
+complete instruction decoding; AMF3 externalizable values; and interoperable
+OpenPGP packet support. MD6, Snefru, Streebog, Whirlpool, RIPEMD, Twofish,
+GOST, CTPH, SSDEEP, every named CRC model, baseline JPEG, first-frame GIF, and
+uncompressed TIFF are implemented in Python and covered by official or
+independent vectors.
 
 | Operation | Status |
 |---|---|

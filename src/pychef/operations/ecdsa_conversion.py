@@ -7,7 +7,7 @@ import binascii
 import json
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg
 
@@ -136,7 +136,7 @@ def _input_components(value: str, input_format: str) -> tuple[bytes, bytes]:
     raise ValueError("Signature format could not be detected")
 
 
-@operation("ECDSA Signature Conversion", category="Ciphers")
+@implementation("ECDSA Signature Conversion", category="Ciphers")
 def ecdsa_signature_conversion(value: Data, args: Args) -> Data:
     text = to_text(value)
     input_format = str(arg(args, 0, "Auto"))

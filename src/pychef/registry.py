@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from threading import RLock
+from typing import Any, cast
 
 from .errors import UnknownOperationError
 from .types import Args, Data
@@ -66,6 +67,26 @@ def operation(name: str, *, category: str = "") -> Callable[[OperationFunction],
 
     def decorator(function: OperationFunction) -> OperationFunction:
         registry.register(Operation(name=name, function=function, category=category))
+        return function
+
+    return decorator
+
+
+def implementation(
+    name: str, *, category: str = ""
+) -> Callable[[OperationFunction], OperationFunction]:
+    """Annotate a shared implementation without registering it directly.
+
+    Built-in operations are registered by their dedicated modules under
+    :mod:`pychef.operations.by_operation`. Keeping this lightweight decorator
+    on shared implementations retains readable operation metadata next to the
+    algorithm while ensuring that every public operation has exactly one file.
+    """
+
+    def decorator(function: OperationFunction) -> OperationFunction:
+        metadata_target = cast(Any, function)
+        metadata_target.__pychef_operation_name__ = name
+        metadata_target.__pychef_operation_category__ = category
         return function
 
     return decorator

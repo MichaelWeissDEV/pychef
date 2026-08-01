@@ -8,7 +8,7 @@ import ipaddress
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, expand_alphabet, require_int
 
@@ -206,32 +206,32 @@ def _convert_units(value: Data, args: Args, factors: Mapping[str, str | int]) ->
     return rendered.rstrip("0").rstrip(".") if "." in rendered else rendered
 
 
-@operation("Convert area", category="Data format")
+@implementation("Convert area", category="Data format")
 def convert_area(value: Data, args: Args) -> str:
     return _convert_units(value, args, _AREA_FACTORS)
 
 
-@operation("Convert data units", category="Data format")
+@implementation("Convert data units", category="Data format")
 def convert_data_units(value: Data, args: Args) -> str:
     return _convert_units(value, args, _DATA_FACTORS)
 
 
-@operation("Convert distance", category="Data format")
+@implementation("Convert distance", category="Data format")
 def convert_distance(value: Data, args: Args) -> str:
     return _convert_units(value, args, _DISTANCE_FACTORS)
 
 
-@operation("Convert mass", category="Data format")
+@implementation("Convert mass", category="Data format")
 def convert_mass(value: Data, args: Args) -> str:
     return _convert_units(value, args, _MASS_FACTORS)
 
 
-@operation("Convert speed", category="Data format")
+@implementation("Convert speed", category="Data format")
 def convert_speed(value: Data, args: Args) -> str:
     return _convert_units(value, args, _SPEED_FACTORS)
 
 
-@operation("Convert Leet Speak", category="Text")
+@implementation("Convert Leet Speak", category="Text")
 def convert_leet(value: Data, args: Args) -> str:
     direction = str(arg(args, 0, "To Leet Speak"))
     mapping = str.maketrans("aAeEiIoOsStT", "44 33 11 00 55 77".replace(" ", ""))
@@ -247,7 +247,7 @@ def _escape_whitespace(value: str) -> str:
     )
 
 
-@operation("ROT13 Brute Force", category="Ciphers")
+@implementation("ROT13 Brute Force", category="Ciphers")
 def rot13_brute_force(value: Data, args: Args) -> str:
     rotate_lower = bool(arg(args, 0, True))
     rotate_upper = bool(arg(args, 1, True))
@@ -274,7 +274,7 @@ def rot13_brute_force(value: Data, args: Args) -> str:
     return "\n".join(lines)
 
 
-@operation("ROT47 Brute Force", category="Ciphers")
+@implementation("ROT47 Brute Force", category="Ciphers")
 def rot47_brute_force(value: Data, args: Args) -> str:
     length = require_int(arg(args, 0, 100))
     offset = require_int(arg(args, 1, 0))
@@ -295,7 +295,7 @@ def rot47_brute_force(value: Data, args: Args) -> str:
     return "\n".join(lines)
 
 
-@operation("XOR Brute Force", category="Ciphers")
+@implementation("XOR Brute Force", category="Ciphers")
 def xor_brute_force(value: Data, args: Args) -> str:
     key_length = require_int(arg(args, 0, 1), name="key length")
     length = require_int(arg(args, 1, 100))
@@ -331,7 +331,7 @@ def xor_brute_force(value: Data, args: Args) -> str:
     return "\n".join(lines)
 
 
-@operation("TCP/IP Checksum", category="Hashing")
+@implementation("TCP/IP Checksum", category="Hashing")
 def tcp_ip_checksum(value: Data, _args: Args) -> str:
     data = to_bytes(value)
     if len(data) % 2:
@@ -360,7 +360,7 @@ def _static_base64_section(encoded: str, prefix: int) -> str:
     return body[:-3] if padding_index % 4 == 2 else body[:-2] if padding_index % 4 == 3 else body
 
 
-@operation("Show Base64 offsets", category="Encoding")
+@implementation("Show Base64 offsets", category="Encoding")
 def show_base64_offsets(value: Data, args: Args) -> str:
     alphabet = str(arg(args, 0, "A-Za-z0-9+/="))
     show_variable = bool(arg(args, 1, True))
@@ -393,7 +393,7 @@ def _transition_from_ipv4(address: ipaddress.IPv4Address, *, network: bool, head
     return "".join((label if headers else "") + rendered + "\n" for label, rendered in entries)
 
 
-@operation("IPv6 Transition Addresses", category="Networking")
+@implementation("IPv6 Transition Addresses", category="Networking")
 def ipv6_transition(value: Data, args: Args) -> str:
     ignore_ranges = bool(arg(args, 0, True))
     headers = not bool(arg(args, 1, False))

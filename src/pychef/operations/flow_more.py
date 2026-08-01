@@ -8,7 +8,7 @@ import json
 import math
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg
 
@@ -19,10 +19,10 @@ def _identity(value: Data, args: Args) -> Data:
 
 
 for _name in ("Conditional Jump", "Fork", "Jump", "Merge", "Register", "Subsection"):
-    operation(_name, category="Flow control")(_identity)
+    implementation(_name, category="Flow control")(_identity)
 
 
-@operation("Automated Validation Test Op", category="Testing")
+@implementation("Automated Validation Test Op", category="Testing")
 def automated_validation_test_op(value: Data, args: Args) -> Data:
     del value
     integer = arg(args, 0, 5)
@@ -53,7 +53,7 @@ def _entropy(data: bytes) -> float:
     return -sum((count / len(data)) * math.log2(count / len(data)) for count in counts.values())
 
 
-@operation("Magic", category="Analysis")
+@implementation("Magic", category="Analysis")
 def magic(value: Data, args: Args) -> Data:
     data = to_bytes(value)
     crib = str(arg(args, 3, ""))

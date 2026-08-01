@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
 
@@ -34,7 +34,7 @@ def _base92_value(character: str) -> int:
     raise ValueError(f"{character} is not a base92 character")
 
 
-@operation("To Base92", category="Encoding")
+@implementation("To Base92", category="Encoding")
 def to_base92(value: Data, _args: Args) -> str:
     data = to_bytes(value)
     output: list[str] = []
@@ -57,7 +57,7 @@ def to_base92(value: Data, _args: Args) -> str:
     return "".join(output)
 
 
-@operation("From Base92", category="Encoding")
+@implementation("From Base92", category="Encoding")
 def from_base92(value: Data, _args: Args) -> bytes:
     text = to_text(value)
     output = bytearray()
@@ -144,7 +144,7 @@ def _bech32_encode(hrp: str, data: bytes, encoding: str, segwit: bool, version: 
     return encoded
 
 
-@operation("To Bech32", category="Encoding")
+@implementation("To Bech32", category="Encoding")
 def to_bech32(value: Data, args: Args) -> str:
     hrp = str(arg(args, 0, "bc"))
     encoding = str(arg(args, 1, "Bech32"))
@@ -198,7 +198,7 @@ def _bech32_decode(value: str, requested_encoding: str) -> tuple[str, str, bytes
     return hrp, detected, decoded, version
 
 
-@operation("From Bech32", category="Encoding")
+@implementation("From Bech32", category="Encoding")
 def from_bech32(value: Data, args: Args) -> Data:
     text = to_text(value).strip()
     if not text:

@@ -9,7 +9,7 @@ import re
 import secrets
 import struct
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
 from .blowfish import _INITIAL_P, _INITIAL_S, _encrypt_pair
@@ -221,7 +221,7 @@ def _argon2_hash(
 _ARGON_VARIANTS = {"Argon2d": 0, "Argon2i": 1, "Argon2id": 2}
 
 
-@operation("Argon2", category="Crypto")
+@implementation("Argon2", category="Crypto")
 def argon2(value: Data, args: Args) -> Data:
     salt = _toggle_bytes(arg(args, 0, {"option": "UTF8", "string": "somesalt"}))
     iterations = require_int(arg(args, 1, 3), name="iterations")
@@ -251,7 +251,7 @@ _ARGON_RE = re.compile(
 )
 
 
-@operation("Argon2 compare", category="Crypto")
+@implementation("Argon2 compare", category="Crypto")
 def argon2_compare(value: Data, args: Args) -> Data:
     encoded = str(arg(args, 0, ""))
     match = _ARGON_RE.fullmatch(encoded)
@@ -385,7 +385,7 @@ def _bcrypt_hash(password: bytes, salt: bytes, cost: int) -> str:
     return _bcrypt_b64encode(bytes(ciphertext[:23]), 31)
 
 
-@operation("Bcrypt", category="Crypto")
+@implementation("Bcrypt", category="Crypto")
 def bcrypt(value: Data, args: Args) -> Data:
     cost = require_int(arg(args, 0, 10), name="rounds")
     salt = secrets.token_bytes(16)
@@ -394,7 +394,7 @@ def bcrypt(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Bcrypt compare", category="Crypto")
+@implementation("Bcrypt compare", category="Crypto")
 def bcrypt_compare(value: Data, args: Args) -> Data:
     encoded = str(arg(args, 0, ""))
     match = _BCRYPT_RE.fullmatch(encoded)

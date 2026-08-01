@@ -7,7 +7,7 @@ import ipaddress
 import json
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
 
@@ -22,7 +22,7 @@ def _input_bytes(value: Data, input_format: str) -> bytes:
     return to_bytes(value)
 
 
-@operation("Strip IPv4 header", category="Networking")
+@implementation("Strip IPv4 header", category="Networking")
 def strip_ipv4(value: Data, _args: Args) -> bytes:
     data = to_bytes(value)
     if len(data) < 20:
@@ -33,7 +33,7 @@ def strip_ipv4(value: Data, _args: Args) -> bytes:
     return data[header_length:]
 
 
-@operation("Strip TCP header", category="Networking")
+@implementation("Strip TCP header", category="Networking")
 def strip_tcp(value: Data, _args: Args) -> bytes:
     data = to_bytes(value)
     if len(data) < 20:
@@ -44,7 +44,7 @@ def strip_tcp(value: Data, _args: Args) -> bytes:
     return data[header_length:]
 
 
-@operation("Strip UDP header", category="Networking")
+@implementation("Strip UDP header", category="Networking")
 def strip_udp(value: Data, _args: Args) -> bytes:
     data = to_bytes(value)
     if len(data) < 8:
@@ -52,7 +52,7 @@ def strip_udp(value: Data, _args: Args) -> bytes:
     return data[8:]
 
 
-@operation("Parse IPv4 header", category="Networking")
+@implementation("Parse IPv4 header", category="Networking")
 def parse_ipv4(value: Data, args: Args) -> Data:
     data = _input_bytes(value, str(arg(args, 0, "Hex")))
     output_format = str(arg(args, 1, "Text output"))
@@ -74,7 +74,7 @@ def parse_ipv4(value: Data, args: Args) -> Data:
     )
 
 
-@operation("Parse TCP", category="Networking")
+@implementation("Parse TCP", category="Networking")
 def parse_tcp(value: Data, args: Args) -> Data:
     data = _input_bytes(value, str(arg(args, 0, "Hex")))
     if len(data) < 20:
@@ -109,7 +109,7 @@ def parse_tcp(value: Data, args: Args) -> Data:
     return json.dumps(packet, separators=(",", ":"))
 
 
-@operation("Parse UDP", category="Networking")
+@implementation("Parse UDP", category="Networking")
 def parse_udp(value: Data, args: Args) -> Data:
     data = _input_bytes(value, str(arg(args, 0, "Hex")))
     if len(data) < 8:
@@ -126,7 +126,7 @@ def parse_udp(value: Data, args: Args) -> Data:
     return json.dumps(packet, separators=(",", ":"))
 
 
-@operation("Parse Ethernet frame", category="Networking")
+@implementation("Parse Ethernet frame", category="Networking")
 def parse_ethernet(value: Data, args: Args) -> Data:
     data = _input_bytes(value, str(arg(args, 0, "Hex")))
     output_format = str(arg(args, 1, "Text output"))
@@ -153,7 +153,7 @@ def parse_ethernet(value: Data, args: Args) -> Data:
     return output + "Data:\n" + payload.hex(" ")
 
 
-@operation("Parse TLV", category="Serialisation")
+@implementation("Parse TLV", category="Serialisation")
 def parse_tlv(value: Data, args: Args) -> str:
     key_length = require_int(arg(args, 0, 0), name="key length")
     length_size = require_int(arg(args, 1, 1), name="length size")
@@ -186,7 +186,7 @@ def parse_tlv(value: Data, args: Args) -> str:
     return json.dumps(entries, indent=4)
 
 
-@operation("Parse UNIX file permissions", category="Operating system")
+@implementation("Parse UNIX file permissions", category="Operating system")
 def parse_unix_permissions(value: Data, _args: Args) -> str:
     text = to_text(value).strip()
     if re.fullmatch(r"[0-7]{3,4}", text):
@@ -207,7 +207,7 @@ def parse_unix_permissions(value: Data, _args: Args) -> str:
     return f"Octal: {mode & 0o777:03o}\nSymbolic: {symbolic}"
 
 
-@operation("Parse colour code", category="Data format")
+@implementation("Parse colour code", category="Data format")
 def parse_colour(value: Data, _args: Args) -> str:
     text = to_text(value).strip()
     if match := re.fullmatch(r"#?([0-9a-fA-F]{6})([0-9a-fA-F]{2})?", text):
@@ -224,7 +224,7 @@ def parse_colour(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Hex to Object Identifier", category="Serialisation")
+@implementation("Hex to Object Identifier", category="Serialisation")
 def hex_to_oid(value: Data, _args: Args) -> str:
     data = bytes.fromhex(re.sub(r"\s+", "", to_text(value)))
     if not data:
@@ -241,7 +241,7 @@ def hex_to_oid(value: Data, _args: Args) -> str:
     return ".".join(map(str, components))
 
 
-@operation("Object Identifier to Hex", category="Serialisation")
+@implementation("Object Identifier to Hex", category="Serialisation")
 def oid_to_hex(value: Data, _args: Args) -> str:
     components = [int(part) for part in to_text(value).strip().split(".")]
     if len(components) < 2:
@@ -257,7 +257,7 @@ def oid_to_hex(value: Data, _args: Args) -> str:
     return output.hex()
 
 
-@operation("Hex to PEM", category="Public Key")
+@implementation("Hex to PEM", category="Public Key")
 def hex_to_pem(value: Data, args: Args) -> str:
     import base64
 
@@ -267,7 +267,7 @@ def hex_to_pem(value: Data, args: Args) -> str:
     return f"-----BEGIN {label}-----\n{lines}\n-----END {label}-----"
 
 
-@operation("PEM to Hex", category="Public Key")
+@implementation("PEM to Hex", category="Public Key")
 def pem_to_hex(value: Data, _args: Args) -> str:
     import base64
 
@@ -275,7 +275,7 @@ def pem_to_hex(value: Data, _args: Args) -> str:
     return base64.b64decode(body).hex()
 
 
-@operation("Parse SSH Host Key", category="Public Key")
+@implementation("Parse SSH Host Key", category="Public Key")
 def parse_ssh_host_key(value: Data, args: Args) -> str:
     import base64
 
@@ -371,7 +371,7 @@ def _asn1_dump(data: bytes, position: int, indent: str = "") -> tuple[list[str],
     return [f"{indent}{name} {content.hex()}".rstrip()], end
 
 
-@operation("Parse ASN.1 hex string", category="Public Key")
+@implementation("Parse ASN.1 hex string", category="Public Key")
 def parse_asn1_hex(value: Data, args: Args) -> str:
     data = bytes.fromhex(re.sub(r"\s+", "", to_text(value)))
     start = require_int(arg(args, 0, 0), name="starting index")
@@ -472,7 +472,7 @@ def _tls_server_hello(content: bytes) -> dict[str, object]:
     return output
 
 
-@operation("Parse TLS record", category="Networking")
+@implementation("Parse TLS record", category="Networking")
 def parse_tls_record(value: Data, _args: Args) -> str:
     data = to_bytes(value)
     position = 0

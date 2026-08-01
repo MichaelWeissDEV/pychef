@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg
 
@@ -175,7 +175,7 @@ def _lzstring_decompress(values: Sequence[int], reset_value: int) -> str:
             number_of_bits += 1
 
 
-@operation("LZString Compress", category="Compression")
+@implementation("LZString Compress", category="Compression")
 def lzstring_compress(value: Data, args: Args) -> str:
     output_format = str(arg(args, 0, "default"))
     text = to_text(value)
@@ -189,7 +189,7 @@ def lzstring_compress(value: Data, args: Args) -> str:
     raise ValueError(f"unknown LZString format: {output_format}")
 
 
-@operation("LZString Decompress", category="Compression")
+@implementation("LZString Decompress", category="Compression")
 def lzstring_decompress(value: Data, args: Args) -> str:
     input_format = str(arg(args, 0, "default"))
     text = to_text(value)
@@ -245,7 +245,7 @@ def _lz4_block_decompress(data: bytes) -> bytes:
     return bytes(output)
 
 
-@operation("LZ4 Compress", category="Compression")
+@implementation("LZ4 Compress", category="Compression")
 def lz4_compress(value: Data, _args: Args) -> bytes:
     data = to_bytes(value)
     output = bytearray(b"\x04\x22\x4d\x18\x40\x70\xdf")
@@ -258,7 +258,7 @@ def lz4_compress(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("LZ4 Decompress", category="Compression")
+@implementation("LZ4 Decompress", category="Compression")
 def lz4_decompress(value: Data, _args: Args) -> bytes:
     data = to_bytes(value)
     if len(data) < 7 or data[:4] != b"\x04\x22\x4d\x18":
@@ -294,7 +294,7 @@ def lz4_decompress(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("LZNT1 Decompress", category="Compression")
+@implementation("LZNT1 Decompress", category="Compression")
 def lznt1_decompress(value: Data, _args: Args) -> bytes:
     compressed = to_bytes(value)
     output = bytearray()

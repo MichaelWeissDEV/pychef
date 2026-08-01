@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Literal
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 
 _ALIGNMENT = 30
@@ -362,7 +362,7 @@ def _symbols(data: bytes, header: _ELFHeader, sections: list[_Section]) -> list[
     return output
 
 
-@operation("ELF Info", category="Analysis")
+@implementation("ELF Info", category="Analysis")
 def elf_info(value: Data, _args: Args) -> str:
     data = to_bytes(value)
     header, header_output = _header(data)

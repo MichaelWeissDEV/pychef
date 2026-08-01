@@ -36,7 +36,10 @@ The pinned reference is CyberChef 11.3.0 at commit
 `c56dd23358e948aff9f3f98913818e544227da13`.
 
 This alpha release registers all 502 upstream operation names (100% name
-coverage). It is not yet a bit-for-bit CyberChef replacement. The exhaustive
+coverage). Every registered operation has its own public Python module below
+`pychef.operations.by_operation`; a structural test prevents operations from
+being registered through a shared catch-all module. Shared algorithm cores are
+kept separate where several operations use the same primitive. The exhaustive
 name-by-name matrix is in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 Compatibility can also be inspected in Python:
@@ -58,13 +61,14 @@ machine-code inspection, JSON query languages, OCR, and YARA rules.
 
 Name coverage is deliberately separate from reference parity. Some callable
 operations are dependency-free compatibility fallbacks or support a documented
-format subset; in particular the legacy MD6/Snefru/Streebog/Whirlpool hashes,
-Twofish, advanced GOST modes, QR decoding, historical-machine emulation,
-JPEG/TIFF codecs, the JavaScript/Jq/Jsonata and YARA language subsets,
-high-contrast bitmap OCR, the instruction decoder subset, and PyChef's
-non-interoperable PGP-style envelope still need broader official parity before
-production use. Argon2, Bcrypt, and SM2 are genuine algorithm implementations
-and are checked against independent or official vectors.
+format subset. Remaining broad parity boundaries include decoding arbitrary QR
+symbols; palette/interlaced PNG, progressive/CMYK JPEG, and compressed TIFF;
+complete Typex/SIGABA/Lorenz machine presets; full JavaScript/Jq/Jsonata and
+YARA grammars; general-purpose OCR; complete instruction decoding; AMF3
+externalizable values; and interoperable OpenPGP packets. The MD6, Snefru,
+Streebog, Whirlpool, RIPEMD, Twofish, GOST, CTPH, SSDEEP, CRC, JPEG baseline,
+GIF first-frame, and uncompressed TIFF paths now have real Python
+implementations and official vectors rather than compatibility placeholders.
 
 ## Security and performance
 
@@ -97,10 +101,11 @@ uv run ty check
 uv build
 ```
 
-Pytest enforces branch coverage of at least 75%. Ruff handles formatting and
-linting, and `ty` checks the typed public API. The published wheel has no runtime
-dependencies.
+Pytest enforces branch coverage of at least 75%; the current suite contains
+more than 830 tests and reports over 85% branch coverage. Ruff handles
+formatting and linting, and `ty` checks the typed public API. The published
+wheel has no runtime dependencies.
 
 PyChef is an independent Python port. CyberChef is Crown copyright 2016, GCHQ,
-and is licensed under Apache License 2.0. See [NOTICE](NOTICE) and
-[LICENSE](LICENSE).
+and is licensed under Apache License 2.0. See [NOTICE](NOTICE),
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), and [LICENSE](LICENSE).

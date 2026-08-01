@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg
 
@@ -86,7 +86,7 @@ def _render_php_json(value: Any, valid_json: bool) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-@operation("PHP Deserialize", category="Serialisation")
+@implementation("PHP Deserialize", category="Serialisation")
 def php_deserialize(value: Data, args: Args) -> str:
     reader = _PHPReader(to_text(value))
     parsed = _php_value(reader)
@@ -124,7 +124,7 @@ def _rison_encode(value: Any) -> str:
     raise ValueError(f"unsupported Rison value: {type(value).__name__}")
 
 
-@operation("Rison Encode", category="Serialisation")
+@implementation("Rison Encode", category="Serialisation")
 def rison_encode(value: Data, args: Args) -> str:
     parsed = json.loads(to_text(value))
     option = str(arg(args, 0, "Encode"))
@@ -221,7 +221,7 @@ def _rison_parse(reader: _RisonReader, depth: int = 0) -> Any:
     return token
 
 
-@operation("Rison Decode", category="Serialisation")
+@implementation("Rison Decode", category="Serialisation")
 def rison_decode(value: Data, args: Args) -> str:
     text = to_text(value)
     option = str(arg(args, 0, "Decode"))
@@ -283,7 +283,7 @@ def _yaml_load(text: str) -> Any:
     return result
 
 
-@operation("YAML to JSON", category="Serialisation")
+@implementation("YAML to JSON", category="Serialisation")
 def yaml_to_json(value: Data, _args: Args) -> str:
     return json.dumps(_yaml_load(to_text(value)), ensure_ascii=False, indent=4)
 
@@ -302,7 +302,7 @@ def _yaml_dump_scalar(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-@operation("JSON to YAML", category="Serialisation")
+@implementation("JSON to YAML", category="Serialisation")
 def json_to_yaml(value: Data, _args: Args) -> str:
     parsed = json.loads(to_text(value))
     if not isinstance(parsed, dict):

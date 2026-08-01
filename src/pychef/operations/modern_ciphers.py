@@ -9,7 +9,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
 
@@ -277,22 +277,22 @@ def _tea_operation(value: Data, args: Args, *, extended: bool, decrypting: bool)
     return _formatted_output(result, output_format)
 
 
-@operation("TEA Encrypt", category="Ciphers")
+@implementation("TEA Encrypt", category="Ciphers")
 def tea_encrypt(value: Data, args: Args) -> Data:
     return _tea_operation(value, args, extended=False, decrypting=False)
 
 
-@operation("TEA Decrypt", category="Ciphers")
+@implementation("TEA Decrypt", category="Ciphers")
 def tea_decrypt(value: Data, args: Args) -> Data:
     return _tea_operation(value, args, extended=False, decrypting=True)
 
 
-@operation("XTEA Encrypt", category="Ciphers")
+@implementation("XTEA Encrypt", category="Ciphers")
 def xtea_encrypt(value: Data, args: Args) -> Data:
     return _tea_operation(value, args, extended=True, decrypting=False)
 
 
-@operation("XTEA Decrypt", category="Ciphers")
+@implementation("XTEA Decrypt", category="Ciphers")
 def xtea_decrypt(value: Data, args: Args) -> Data:
     return _tea_operation(value, args, extended=True, decrypting=True)
 
@@ -366,12 +366,12 @@ def _xxtea(value: Data, args: Args, *, decrypting: bool) -> bytes:
     return _little_bytes(words, decrypting)
 
 
-@operation("XXTEA Encrypt", category="Ciphers")
+@implementation("XXTEA Encrypt", category="Ciphers")
 def xxtea_encrypt(value: Data, args: Args) -> bytes:
     return _xxtea(value, args, decrypting=False)
 
 
-@operation("XXTEA Decrypt", category="Ciphers")
+@implementation("XXTEA Decrypt", category="Ciphers")
 def xxtea_decrypt(value: Data, args: Args) -> bytes:
     return _xxtea(value, args, decrypting=True)
 
@@ -466,12 +466,12 @@ def _present(value: Data, args: Args, *, decrypting: bool) -> Data:
     return _formatted_output(result, output_format)
 
 
-@operation("PRESENT Encrypt", category="Ciphers")
+@implementation("PRESENT Encrypt", category="Ciphers")
 def present_encrypt(value: Data, args: Args) -> Data:
     return _present(value, args, decrypting=False)
 
 
-@operation("PRESENT Decrypt", category="Ciphers")
+@implementation("PRESENT Decrypt", category="Ciphers")
 def present_decrypt(value: Data, args: Args) -> Data:
     return _present(value, args, decrypting=True)
 
@@ -494,7 +494,7 @@ def _ciphersaber(data: bytes, iv: bytes, key: bytes, rounds: int) -> bytes:
     return bytes(output)
 
 
-@operation("CipherSaber2 Encrypt", category="Ciphers")
+@implementation("CipherSaber2 Encrypt", category="Ciphers")
 def ciphersaber_encrypt(value: Data, args: Args) -> bytes:
     key = _toggle_bytes(arg(args, 0, {"option": "Latin1", "string": ""}))
     rounds = require_int(arg(args, 1, 20), name="rounds")
@@ -502,7 +502,7 @@ def ciphersaber_encrypt(value: Data, args: Args) -> bytes:
     return iv + _ciphersaber(to_bytes(value), iv, key, rounds)
 
 
-@operation("CipherSaber2 Decrypt", category="Ciphers")
+@implementation("CipherSaber2 Decrypt", category="Ciphers")
 def ciphersaber_decrypt(value: Data, args: Args) -> bytes:
     data = to_bytes(value)
     if len(data) < 10:
@@ -512,7 +512,7 @@ def ciphersaber_decrypt(value: Data, args: Args) -> bytes:
     return _ciphersaber(data[10:], data[:10], key, rounds)
 
 
-@operation("RC4 Drop", category="Ciphers")
+@implementation("RC4 Drop", category="Ciphers")
 def rc4_drop(value: Data, args: Args) -> Data:
     key = _toggle_bytes(arg(args, 0, {"option": "Hex", "string": ""}))
     input_format = str(arg(args, 1, "Latin1"))

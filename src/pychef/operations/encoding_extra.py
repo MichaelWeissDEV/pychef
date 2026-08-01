@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, expand_alphabet, require_int
 
@@ -21,7 +21,7 @@ _BRAILLE_ASCII = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]
 _BRAILLE_DOTS = "⠀⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿"
 
 
-@operation("To Base45", category="Encoding")
+@implementation("To Base45", category="Encoding")
 def to_base45(value: Data, args: Args) -> str:
     alphabet = expand_alphabet(str(arg(args, 0, "0-9A-Z $%*+\\-./:")))
     if len(alphabet) != 45:
@@ -40,7 +40,7 @@ def to_base45(value: Data, args: Args) -> str:
     return output
 
 
-@operation("From Base45", category="Encoding")
+@implementation("From Base45", category="Encoding")
 def from_base45(value: Data, args: Args) -> bytes:
     alphabet = expand_alphabet(str(arg(args, 0, "0-9A-Z $%*+\\-./:")))
     remove_invalid = bool(arg(args, 1, True))
@@ -69,7 +69,7 @@ def from_base45(value: Data, args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("To COBS", category="Encoding")
+@implementation("To COBS", category="Encoding")
 def to_cobs(value: Data, _args: Args) -> bytes:
     output = bytearray([0])
     code_index = 0
@@ -92,7 +92,7 @@ def to_cobs(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("From COBS", category="Encoding")
+@implementation("From COBS", category="Encoding")
 def from_cobs(value: Data, _args: Args) -> bytes:
     data = to_bytes(value)
     output = bytearray()
@@ -109,7 +109,7 @@ def from_cobs(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("To BCD", category="Encoding")
+@implementation("To BCD", category="Encoding")
 def to_bcd(value: Data, args: Args) -> Data:
     scheme = _BCD[str(arg(args, 0, "8 4 2 1"))]
     packed = bool(arg(args, 1, True))
@@ -141,7 +141,7 @@ def to_bcd(value: Data, args: Args) -> Data:
     return " ".join(f"{nibble:04b}" for nibble in display_nibbles)
 
 
-@operation("From BCD", category="Encoding")
+@implementation("From BCD", category="Encoding")
 def from_bcd(value: Data, args: Args) -> str:
     scheme = _BCD[str(arg(args, 0, "8 4 2 1"))]
     packed = bool(arg(args, 1, True))
@@ -166,17 +166,17 @@ def from_bcd(value: Data, args: Args) -> str:
         raise ValueError(f"value {exc.args[0]:04b} is not in the encoding scheme") from exc
 
 
-@operation("To Braille", category="Encoding")
+@implementation("To Braille", category="Encoding")
 def to_braille(value: Data, _args: Args) -> str:
     return to_text(value).upper().translate(str.maketrans(_BRAILLE_ASCII, _BRAILLE_DOTS))
 
 
-@operation("From Braille", category="Encoding")
+@implementation("From Braille", category="Encoding")
 def from_braille(value: Data, _args: Args) -> str:
     return to_text(value).translate(str.maketrans(_BRAILLE_DOTS, _BRAILLE_ASCII))
 
 
-@operation("To Hexdump", category="Encoding")
+@implementation("To Hexdump", category="Encoding")
 def to_hexdump(value: Data, args: Args) -> str:
     width = require_int(arg(args, 0, 16), name="width")
     uppercase = bool(arg(args, 1, False))
@@ -197,7 +197,7 @@ def to_hexdump(value: Data, args: Args) -> str:
     return "\n".join(lines)
 
 
-@operation("From Hexdump", category="Encoding")
+@implementation("From Hexdump", category="Encoding")
 def from_hexdump(value: Data, _args: Args) -> bytes:
     output = bytearray()
     pattern = re.compile(r"^\s*(?:[0-9A-Fa-f]{4,16}h?:?)?\s+((?:[0-9A-Fa-f]{2}[ -]?)+)")
@@ -207,7 +207,7 @@ def from_hexdump(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("To Case Insensitive Regex", category="Encoding")
+@implementation("To Case Insensitive Regex", category="Encoding")
 def to_case_insensitive_regex(value: Data, _args: Args) -> str:
     return re.sub(
         r"(?<!-)([A-Za-z])(?!-)",
@@ -216,7 +216,7 @@ def to_case_insensitive_regex(value: Data, _args: Args) -> str:
     )
 
 
-@operation("From Case Insensitive Regex", category="Encoding")
+@implementation("From Case Insensitive Regex", category="Encoding")
 def from_case_insensitive_regex(value: Data, _args: Args) -> str:
     return re.sub(
         r"\[([a-z])([A-Z])\]",
@@ -227,7 +227,7 @@ def from_case_insensitive_regex(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Unicode Text Format", category="Text")
+@implementation("Unicode Text Format", category="Text")
 def unicode_text_format(value: Data, args: Args) -> str:
     underline = bool(arg(args, 0, False))
     strike = bool(arg(args, 1, False))
@@ -235,7 +235,7 @@ def unicode_text_format(value: Data, args: Args) -> str:
     return "".join(character + suffix for character in to_text(value))
 
 
-@operation("Parity Bit", category="Encoding")
+@implementation("Parity Bit", category="Encoding")
 def parity_bit(value: Data, args: Args) -> str:
     mode = str(arg(args, 0, "Even Parity"))
     position = str(arg(args, 1, "Start"))

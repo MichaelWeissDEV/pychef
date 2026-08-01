@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg, require_int
 
@@ -192,7 +192,7 @@ def _hash(data: bytes, length: int, key: bytes | None = None) -> bytes:
     return outputs[0].root_bytes(length)
 
 
-@operation("BLAKE3", category="Hashing")
+@implementation("BLAKE3", category="Hashing")
 def blake3(value: Data, args: Args) -> Data:
     length = require_int(arg(args, 0, 16), name="size")
     if not 1 <= length <= 65535:

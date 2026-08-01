@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 
 _DECODE_TRIPLES = bytes.fromhex(
@@ -110,7 +110,7 @@ def _decode(data: str) -> str:
     return "".join(result)
 
 
-@operation("Microsoft Script Decoder", category="Default")
+@implementation("Microsoft Script Decoder", category="Default")
 def microsoft_script_decoder(value: Data, _args: Args) -> Data:
     match = _SCRIPT_PATTERN.search(to_text(value))
     return _decode(match.group(1)) if match else ""

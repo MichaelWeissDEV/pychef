@@ -11,7 +11,7 @@ import re
 from typing import Any
 from xml.dom import minidom
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg
 
@@ -24,7 +24,7 @@ def _json(value: Data) -> Any:
     return json.loads(to_text(value))
 
 
-@operation("JSON Beautify", category="Serialisation")
+@implementation("JSON Beautify", category="Serialisation")
 def json_beautify(value: Data, args: Args) -> str:
     if not value:
         return ""
@@ -39,14 +39,14 @@ def json_beautify(value: Data, args: Args) -> str:
     return "\n".join(line.replace(" ", indent, len(line) - len(line.lstrip())) for line in lines)
 
 
-@operation("JSON Minify", category="Serialisation")
+@implementation("JSON Minify", category="Serialisation")
 def json_minify(value: Data, _args: Args) -> str:
     if not value:
         return ""
     return json.dumps(_json(value), ensure_ascii=False, separators=(",", ":"))
 
 
-@operation("JWT Decode", category="Serialisation")
+@implementation("JWT Decode", category="Serialisation")
 def jwt_decode(value: Data, _args: Args) -> str:
     parts = to_text(value).split(".")
     if len(parts) != 3:
@@ -56,7 +56,7 @@ def jwt_decode(value: Data, _args: Args) -> str:
     return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
 
 
-@operation("CSV to JSON", category="Serialisation")
+@implementation("CSV to JSON", category="Serialisation")
 def csv_to_json(value: Data, args: Args) -> str:
     cell_delimiters = _escaped(arg(args, 0, ","))
     row_delimiters = _escaped(arg(args, 1, "\\r\\n"))
@@ -74,7 +74,7 @@ def csv_to_json(value: Data, args: Args) -> str:
     return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
 
 
-@operation("JSON to CSV", category="Serialisation")
+@implementation("JSON to CSV", category="Serialisation")
 def json_to_csv(value: Data, args: Args) -> str:
     cell_delimiter = _escaped(arg(args, 0, ","))
     row_delimiter = _escaped(arg(args, 1, "\\r\\n"))
@@ -92,14 +92,14 @@ def json_to_csv(value: Data, args: Args) -> str:
     return output.getvalue().removesuffix(row_delimiter)
 
 
-@operation("XML Beautify", category="Serialisation")
+@implementation("XML Beautify", category="Serialisation")
 def xml_beautify(value: Data, args: Args) -> str:
     indent = _escaped(arg(args, 0, "\\t"))
     document = minidom.parseString(to_bytes(value))
     return document.toprettyxml(indent=indent).strip()
 
 
-@operation("XML Minify", category="Serialisation")
+@implementation("XML Minify", category="Serialisation")
 def xml_minify(value: Data, args: Args) -> str:
     preserve_comments = bool(arg(args, 0, False))
     document = minidom.parseString(to_bytes(value))
@@ -117,13 +117,13 @@ def _remove_comments(node: Any) -> None:
             _remove_comments(child)
 
 
-@operation("P-list Viewer", category="Serialisation")
+@implementation("P-list Viewer", category="Serialisation")
 def plist_viewer(value: Data, _args: Args) -> str:
     parsed = plistlib.loads(to_bytes(value))
     return json.dumps(parsed, ensure_ascii=False, indent=4, default=str)
 
 
-@operation("JPath expression", category="Serialisation")
+@implementation("JPath expression", category="Serialisation")
 def jpath(value: Data, args: Args) -> str:
     expression = str(arg(args, 0, ""))
     current = _json(value)
@@ -137,7 +137,7 @@ def jpath(value: Data, args: Args) -> str:
     )
 
 
-@operation("PHP Serialize", category="Serialisation")
+@implementation("PHP Serialize", category="Serialisation")
 def php_serialize(value: Data, _args: Args) -> str:
     return _php_encode(_json(value))
 
@@ -162,7 +162,7 @@ def _php_encode(value: Any) -> str:
     raise ValueError(f"cannot PHP-serialize {type(value).__name__}")
 
 
-@operation("VarInt Encode", category="Serialisation")
+@implementation("VarInt Encode", category="Serialisation")
 def varint_encode(value: Data, _args: Args) -> bytes:
     number = int(to_text(value).strip(), 0)
     if number < 0:
@@ -175,7 +175,7 @@ def varint_encode(value: Data, _args: Args) -> bytes:
     return bytes(output)
 
 
-@operation("VarInt Decode", category="Serialisation")
+@implementation("VarInt Decode", category="Serialisation")
 def varint_decode(value: Data, _args: Args) -> str:
     result = shift = 0
     for byte in to_bytes(value):

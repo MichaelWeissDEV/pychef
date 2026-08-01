@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg
 
@@ -41,7 +41,7 @@ def _restore(structure: list[bool | str], transformed: list[str]) -> str:
     return output
 
 
-@operation("Bifid Cipher Encode", category="Ciphers")
+@implementation("Bifid Cipher Encode", category="Ciphers")
 def bifid_encode(value: Data, args: Args) -> str:
     square = _square(str(arg(args, 0, "")))
     structure, letters = _structure(to_text(value))
@@ -60,7 +60,7 @@ def bifid_encode(value: Data, args: Args) -> str:
     return _restore(structure, transformed)
 
 
-@operation("Bifid Cipher Decode", category="Ciphers")
+@implementation("Bifid Cipher Decode", category="Ciphers")
 def bifid_decode(value: Data, args: Args) -> str:
     square = _square(str(arg(args, 0, "")))
     structure, letters = _structure(to_text(value))

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg, require_int
 
@@ -95,7 +95,7 @@ def _keccak(data: bytes, bits: int) -> bytes:
     return bytes(output[: bits // 8])
 
 
-@operation("Keccak", category="Hashing")
+@implementation("Keccak", category="Hashing")
 def keccak(value: Data, args: Args) -> str:
     bits = require_int(arg(args, 0, 512), name="size")
     return _keccak(to_bytes(value), bits).hex()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hmac
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes
 from ._utils import arg
 from .modern_ciphers import _formatted_input, _formatted_output, _toggle_bytes
@@ -180,17 +180,17 @@ def _aead_operation(value: Data, args: Args, *, decrypting: bool) -> Data:
     return _formatted_output(result, output_format)
 
 
-@operation("Ascon Encrypt", category="Ciphers")
+@implementation("Ascon Encrypt", category="Ciphers")
 def ascon_encrypt(value: Data, args: Args) -> Data:
     return _aead_operation(value, args, decrypting=False)
 
 
-@operation("Ascon Decrypt", category="Ciphers")
+@implementation("Ascon Decrypt", category="Ciphers")
 def ascon_decrypt(value: Data, args: Args) -> Data:
     return _aead_operation(value, args, decrypting=True)
 
 
-@operation("Ascon Hash", category="Hashing")
+@implementation("Ascon Hash", category="Hashing")
 def ascon_hash(value: Data, args: Args) -> Data:
     del args
     initialization = bytes((2, 0, 0xCC, 0, 1, 8, 0, 0))
@@ -207,7 +207,7 @@ def ascon_hash(value: Data, args: Args) -> Data:
     return bytes(output[:32]).hex()
 
 
-@operation("Ascon MAC", category="Hashing")
+@implementation("Ascon MAC", category="Hashing")
 def ascon_mac(value: Data, args: Args) -> Data:
     key = _toggle_bytes(arg(args, 0, {"option": "Hex", "string": ""}))
     if len(key) != 16:

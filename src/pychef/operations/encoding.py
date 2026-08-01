@@ -14,7 +14,7 @@ import re
 import struct
 from urllib.parse import quote, unquote, unquote_plus
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep, expand_alphabet, require_int
 
@@ -59,7 +59,7 @@ def _base_n_decode(text: str, alphabet: str) -> bytes:
     return b"\0" * leading + decoded
 
 
-@operation("To Base64", category="Encoding")
+@implementation("To Base64", category="Encoding")
 def to_base64(value: Data, args: Args) -> str:
     alphabet_spec = str(arg(args, 0, "A-Za-z0-9+/="))
     alphabet = expand_alphabet(alphabet_spec)
@@ -72,7 +72,7 @@ def to_base64(value: Data, args: Args) -> str:
     return _translate(result, _BASE64, alphabet)
 
 
-@operation("From Base64", category="Encoding")
+@implementation("From Base64", category="Encoding")
 def from_base64(value: Data, args: Args) -> bytes:
     alphabet_spec = str(arg(args, 0, "A-Za-z0-9+/="))
     remove_non_alphabet = bool(arg(args, 1, True))
@@ -90,7 +90,7 @@ def from_base64(value: Data, args: Args) -> bytes:
     return base64.b64decode(text, validate=strict)
 
 
-@operation("To Base32", category="Encoding")
+@implementation("To Base32", category="Encoding")
 def to_base32(value: Data, args: Args) -> str:
     alphabet = expand_alphabet(str(arg(args, 0, "A-Z2-7=")))
     if len(alphabet) not in (32, 33):
@@ -102,7 +102,7 @@ def to_base32(value: Data, args: Args) -> str:
     return _translate(result, _BASE32, alphabet)
 
 
-@operation("From Base32", category="Encoding")
+@implementation("From Base32", category="Encoding")
 def from_base32(value: Data, args: Args) -> bytes:
     alphabet = expand_alphabet(str(arg(args, 0, "A-Z2-7=")))
     remove_non_alphabet = bool(arg(args, 1, True))
@@ -118,7 +118,7 @@ def from_base32(value: Data, args: Args) -> bytes:
     return base64.b32decode(text, casefold=False)
 
 
-@operation("To Base85", category="Encoding")
+@implementation("To Base85", category="Encoding")
 def to_base85(value: Data, args: Args) -> str:
     alphabet = str(arg(args, 0, "Standard"))
     include_delimiter = bool(arg(args, 1, False))
@@ -134,7 +134,7 @@ def to_base85(value: Data, args: Args) -> str:
     return _translate(standard, "".join(chr(code) for code in range(33, 118)), custom)
 
 
-@operation("From Base85", category="Encoding")
+@implementation("From Base85", category="Encoding")
 def from_base85(value: Data, args: Args) -> bytes:
     alphabet = str(arg(args, 0, "Standard"))
     text = to_text(value).strip()
@@ -149,13 +149,13 @@ def from_base85(value: Data, args: Args) -> bytes:
     return base64.a85decode(_translate(text, custom, standard))
 
 
-@operation("To Base58", category="Encoding")
+@implementation("To Base58", category="Encoding")
 def to_base58(value: Data, args: Args) -> str:
     alphabet = expand_alphabet(str(arg(args, 0, _BASE58)))
     return _base_n_encode(to_bytes(value), alphabet)
 
 
-@operation("From Base58", category="Encoding")
+@implementation("From Base58", category="Encoding")
 def from_base58(value: Data, args: Args) -> bytes:
     alphabet = expand_alphabet(str(arg(args, 0, _BASE58)))
     remove_non_alphabet = bool(arg(args, 1, True))
@@ -165,19 +165,19 @@ def from_base58(value: Data, args: Args) -> bytes:
     return _base_n_decode(text, alphabet)
 
 
-@operation("To Base62", category="Encoding")
+@implementation("To Base62", category="Encoding")
 def to_base62(value: Data, args: Args) -> str:
     alphabet = expand_alphabet(str(arg(args, 0, "0-9A-Za-z")))
     return _base_n_encode(to_bytes(value), alphabet)
 
 
-@operation("From Base62", category="Encoding")
+@implementation("From Base62", category="Encoding")
 def from_base62(value: Data, args: Args) -> bytes:
     alphabet = expand_alphabet(str(arg(args, 0, "0-9A-Za-z")))
     return _base_n_decode(to_text(value), alphabet)
 
 
-@operation("To Hex", category="Encoding")
+@implementation("To Hex", category="Encoding")
 def to_hex(value: Data, args: Args) -> str:
     delimiter_name = arg(args, 0, "Space")
     bytes_per_line = require_int(arg(args, 1, 0), name="bytes per line")
@@ -200,7 +200,7 @@ def to_hex(value: Data, args: Args) -> str:
     return "\n".join(lines)
 
 
-@operation("From Hex", category="Encoding")
+@implementation("From Hex", category="Encoding")
 def from_hex(value: Data, args: Args) -> bytes:
     delimiter_name = str(arg(args, 0, "Auto"))
     text = to_text(value).strip()
@@ -243,45 +243,45 @@ def _parse_numbers(text: str, base: int, delimiter: str, width: int) -> bytes:
     return bytes(int(token.strip(), base) & 0xFF for token in tokens)
 
 
-@operation("To Binary", category="Encoding")
+@implementation("To Binary", category="Encoding")
 def to_binary(value: Data, args: Args) -> str:
     delimiter = _numeric_delimiter(arg(args, 0, "Space"))
     width = require_int(arg(args, 1, 8)) or 8
     return _format_numbers(to_bytes(value), 2, delimiter, width)
 
 
-@operation("From Binary", category="Encoding")
+@implementation("From Binary", category="Encoding")
 def from_binary(value: Data, args: Args) -> bytes:
     delimiter = _numeric_delimiter(arg(args, 0, "Space"))
     width = require_int(arg(args, 1, 8)) or 8
     return _parse_numbers(to_text(value), 2, delimiter, width)
 
 
-@operation("To Octal", category="Encoding")
+@implementation("To Octal", category="Encoding")
 def to_octal(value: Data, args: Args) -> str:
     delimiter = _numeric_delimiter(arg(args, 0, "Space"))
     return _format_numbers(to_bytes(value), 8, delimiter, 3)
 
 
-@operation("From Octal", category="Encoding")
+@implementation("From Octal", category="Encoding")
 def from_octal(value: Data, args: Args) -> bytes:
     delimiter = _numeric_delimiter(arg(args, 0, "Space"))
     return _parse_numbers(to_text(value), 8, delimiter, 3)
 
 
-@operation("To Decimal", category="Encoding")
+@implementation("To Decimal", category="Encoding")
 def to_decimal(value: Data, args: Args) -> str:
     delimiter = _numeric_delimiter(arg(args, 0, "Space"))
     return _format_numbers(to_bytes(value), 10, delimiter, 1)
 
 
-@operation("From Decimal", category="Encoding")
+@implementation("From Decimal", category="Encoding")
 def from_decimal(value: Data, args: Args) -> bytes:
     delimiter = _numeric_delimiter(arg(args, 0, "Space"))
     return _parse_numbers(to_text(value), 10, delimiter, 3)
 
 
-@operation("To Charcode", category="Encoding")
+@implementation("To Charcode", category="Encoding")
 def to_charcode(value: Data, args: Args) -> str:
     base = require_int(arg(args, 0, 10), name="base")
     delimiter = char_rep(arg(args, 1, "Space"), " ")
@@ -302,7 +302,7 @@ def to_charcode(value: Data, args: Args) -> str:
     return delimiter.join(encode(ord(character)) for character in text)
 
 
-@operation("From Charcode", category="Encoding")
+@implementation("From Charcode", category="Encoding")
 def from_charcode(value: Data, args: Args) -> str:
     base = require_int(arg(args, 0, 10), name="base")
     delimiter = char_rep(arg(args, 1, "Space"), " ")
@@ -311,7 +311,7 @@ def from_charcode(value: Data, args: Args) -> str:
     return "".join(chr(int(token, base)) for token in tokens if token)
 
 
-@operation("URL Encode", category="Encoding")
+@implementation("URL Encode", category="Encoding")
 def url_encode(value: Data, args: Args) -> str:
     encode_all = bool(arg(args, 0, False))
     uppercase = bool(arg(args, 1, False))
@@ -324,14 +324,14 @@ def url_encode(value: Data, args: Args) -> str:
     )
 
 
-@operation("URL Decode", category="Encoding")
+@implementation("URL Decode", category="Encoding")
 def url_decode(value: Data, args: Args) -> str:
     convert_plus = bool(arg(args, 0, True))
     text = to_text(value)
     return unquote_plus(text) if convert_plus else unquote(text)
 
 
-@operation("To HTML Entity", category="Encoding")
+@implementation("To HTML Entity", category="Encoding")
 def to_html_entity(value: Data, args: Args) -> str:
     named = bool(arg(args, 0, True))
     text = to_text(value)
@@ -343,43 +343,43 @@ def to_html_entity(value: Data, args: Args) -> str:
     )
 
 
-@operation("From HTML Entity", category="Encoding")
+@implementation("From HTML Entity", category="Encoding")
 def from_html_entity(value: Data, _args: Args) -> str:
     return html.unescape(to_text(value))
 
 
-@operation("To Quoted Printable", category="Encoding")
+@implementation("To Quoted Printable", category="Encoding")
 def to_quoted_printable(value: Data, _args: Args) -> str:
     return quopri.encodestring(to_bytes(value)).decode("ascii")
 
 
-@operation("From Quoted Printable", category="Encoding")
+@implementation("From Quoted Printable", category="Encoding")
 def from_quoted_printable(value: Data, _args: Args) -> bytes:
     return quopri.decodestring(to_bytes(value))
 
 
-@operation("To Punycode", category="Encoding")
+@implementation("To Punycode", category="Encoding")
 def to_punycode(value: Data, _args: Args) -> str:
     return to_text(value).encode("idna").decode("ascii")
 
 
-@operation("From Punycode", category="Encoding")
+@implementation("From Punycode", category="Encoding")
 def from_punycode(value: Data, _args: Args) -> str:
     return to_text(value).encode("ascii").decode("idna")
 
 
-@operation("To Modhex", category="Encoding")
+@implementation("To Modhex", category="Encoding")
 def to_modhex(value: Data, _args: Args) -> str:
     return to_bytes(value).hex().translate(str.maketrans("0123456789abcdef", _MODHEX))
 
 
-@operation("From Modhex", category="Encoding")
+@implementation("From Modhex", category="Encoding")
 def from_modhex(value: Data, _args: Args) -> bytes:
     translated = to_text(value).translate(str.maketrans(_MODHEX, "0123456789abcdef"))
     return bytes.fromhex(translated)
 
 
-@operation("To Float", category="Encoding")
+@implementation("To Float", category="Encoding")
 def to_float(value: Data, args: Args) -> str:
     endian = str(arg(args, 0, "Big endian"))
     precision = str(arg(args, 1, "Single precision"))
@@ -394,7 +394,7 @@ def to_float(value: Data, args: Args) -> str:
     )
 
 
-@operation("From Float", category="Encoding")
+@implementation("From Float", category="Encoding")
 def from_float(value: Data, args: Args) -> bytes:
     endian = str(arg(args, 0, "Big endian"))
     precision = str(arg(args, 1, "Single precision"))
@@ -406,7 +406,7 @@ def from_float(value: Data, args: Args) -> bytes:
     return b"".join(struct.pack(prefix + code, float(token)) for token in tokens)
 
 
-@operation("To Base", category="Encoding")
+@implementation("To Base", category="Encoding")
 def to_base(value: Data, args: Args) -> str:
     radix = require_int(arg(args, 0, 16), name="radix")
     if not 2 <= radix <= 36:
@@ -422,7 +422,7 @@ def to_base(value: Data, args: Args) -> str:
     return output
 
 
-@operation("From Base", category="Encoding")
+@implementation("From Base", category="Encoding")
 def from_base(value: Data, args: Args) -> bytes:
     radix = require_int(arg(args, 0, 16), name="radix")
     number = int(to_text(value).strip(), radix)
@@ -430,11 +430,11 @@ def from_base(value: Data, args: Args) -> bytes:
     return number.to_bytes(size, "big")
 
 
-@operation("To Hex Content", category="Encoding")
+@implementation("To Hex Content", category="Encoding")
 def to_hex_content(value: Data, _args: Args) -> str:
     return to_bytes(value).hex()
 
 
-@operation("From Hex Content", category="Encoding")
+@implementation("From Hex Content", category="Encoding")
 def from_hex_content(value: Data, _args: Args) -> bytes:
     return binascii.unhexlify(re.sub(r"\s+", "", to_text(value)))

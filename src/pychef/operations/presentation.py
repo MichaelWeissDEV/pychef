@@ -9,7 +9,7 @@ import math
 import re
 from collections.abc import Iterable
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep, require_int
 
@@ -67,7 +67,7 @@ def _project(
     )
 
 
-@operation("Scatter chart", category="Visualisation")
+@implementation("Scatter chart", category="Visualisation")
 def scatter_chart(value: Data, args: Args) -> Data:
     headers, rows = _rows(value, args)
     points = [(row[0], row[1]) for row in rows if len(row) >= 2]
@@ -92,7 +92,7 @@ def scatter_chart(value: Data, args: Args) -> Data:
     return svg + "</svg>"
 
 
-@operation("Series chart", category="Visualisation")
+@implementation("Series chart", category="Visualisation")
 def series_chart(value: Data, args: Args) -> Data:
     headers, rows = _rows(value, args)
     if not rows:
@@ -123,7 +123,7 @@ def _colour(value: float, maximum: float) -> str:
     return f"rgb({round(255 * ratio)},{round(90 + 100 * (1 - ratio))},{round(255 * (1 - ratio))})"
 
 
-@operation("Heatmap chart", category="Visualisation")
+@implementation("Heatmap chart", category="Visualisation")
 def heatmap_chart(value: Data, args: Args) -> Data:
     _, rows = _rows(value, args)
     points = [(row[0], row[1]) for row in rows if len(row) >= 2]
@@ -148,7 +148,7 @@ def heatmap_chart(value: Data, args: Args) -> Data:
     return svg + "</svg>"
 
 
-@operation("Hex Density chart", category="Visualisation")
+@implementation("Hex Density chart", category="Visualisation")
 def hex_density_chart(value: Data, args: Args) -> Data:
     _, rows = _rows(value, args)
     points = [(row[0], row[1]) for row in rows if len(row) >= 2]
@@ -188,7 +188,7 @@ def _inline_markdown(text: str, new_tab: bool) -> str:
     )
 
 
-@operation("Render Markdown", category="Rendering")
+@implementation("Render Markdown", category="Rendering")
 def render_markdown(value: Data, args: Args) -> Data:
     auto_links = bool(arg(args, 0, False))
     new_tab = bool(arg(args, 2, False))
@@ -224,7 +224,7 @@ def render_markdown(value: Data, args: Args) -> Data:
     return "\n".join(output)
 
 
-@operation("Render PDF", category="Rendering")
+@implementation("Render PDF", category="Rendering")
 def render_pdf(value: Data, args: Args) -> Data:
     data = (
         base64.b64decode(to_text(value), validate=True)
@@ -247,7 +247,7 @@ _MEDIA_SIGNATURES = (
 )
 
 
-@operation("Play Media", category="Rendering")
+@implementation("Play Media", category="Rendering")
 def play_media(value: Data, args: Args) -> Data:
     input_format = str(arg(args, 0, "Raw"))
     if input_format == "Hex":
@@ -263,7 +263,7 @@ def play_media(value: Data, args: Args) -> Data:
     return data
 
 
-@operation("Syntax highlighter", category="Rendering")
+@implementation("Syntax highlighter", category="Rendering")
 def syntax_highlighter(value: Data, args: Args) -> Data:
     language = html.escape(str(arg(args, 0, "Auto")), quote=True)
     escaped = html.escape(to_text(value))
@@ -381,7 +381,7 @@ def _coordinate_output(
     return delimiter.join(values)
 
 
-@operation("Convert co-ordinate format", category="Geography")
+@implementation("Convert co-ordinate format", category="Geography")
 def convert_coordinate_format(value: Data, args: Args) -> Data:
     text = to_text(value)
     if not text.strip():
@@ -395,7 +395,7 @@ def convert_coordinate_format(value: Data, args: Args) -> Data:
     return _coordinate_output(latitude, longitude, output_format, delimiter, direction, precision)
 
 
-@operation("Show on map", category="Geography")
+@implementation("Show on map", category="Geography")
 def show_on_map(value: Data, args: Args) -> Data:
     zoom = max(0, min(22, require_int(arg(args, 0, 13), name="zoom")))
     input_format = str(arg(args, 1, "Auto"))

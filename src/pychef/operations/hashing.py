@@ -14,9 +14,13 @@ import zlib
 from collections import Counter
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
+from .crc_models import CRC_MODELS
+from .sha_custom import sha1 as _sha1
+from .sha_custom import sha256 as _sha256
+from .sha_custom import sha512 as _sha512
 
 
 def _digest(name: str, value: Data) -> str:
@@ -26,42 +30,38 @@ def _digest(name: str, value: Data) -> str:
         raise ValueError(f"hash algorithm is unavailable in this Python build: {name}") from exc
 
 
-@operation("MD5", category="Hashing")
+@implementation("MD5", category="Hashing")
 def md5(value: Data, _args: Args) -> str:
     return _digest("md5", value)
 
 
-@operation("SHA1", category="Hashing")
+@implementation("SHA1", category="Hashing")
 def sha1(value: Data, args: Args) -> str:
     rounds = require_int(arg(args, 0, 80), name="rounds")
-    if rounds != 80:
-        raise ValueError("custom SHA-1 rounds are not implemented")
-    return _digest("sha1", value)
+    return _sha1(to_bytes(value), rounds).hex()
 
 
-@operation("SHA2", category="Hashing")
+@implementation("SHA2", category="Hashing")
 def sha2(value: Data, args: Args) -> str:
     size = str(arg(args, 0, "512"))
-    algorithm = {
-        "224": "sha224",
-        "256": "sha256",
-        "384": "sha384",
-        "512": "sha512",
-        "512/224": "sha512_224",
-        "512/256": "sha512_256",
-    }.get(size)
-    if algorithm is None:
+    data = to_bytes(value)
+    if size in {"224", "256"}:
+        rounds = require_int(arg(args, 1, 64), name="rounds")
+        return _sha256(data, int(size), rounds).hex()
+    bits = {"384": 384, "512": 512, "512/224": 224, "512/256": 256}.get(size)
+    if bits is None:
         raise ValueError(f"unsupported SHA-2 size: {size}")
-    return _digest(algorithm, value)
+    rounds = require_int(arg(args, 2, 160), name="rounds")
+    return _sha512(data, bits, rounds).hex()
 
 
-@operation("SHA3", category="Hashing")
+@implementation("SHA3", category="Hashing")
 def sha3(value: Data, args: Args) -> str:
     size = str(arg(args, 0, "512"))
     return _digest(f"sha3_{size}", value)
 
 
-@operation("Shake", category="Hashing")
+@implementation("Shake", category="Hashing")
 def shake(value: Data, args: Args) -> str:
     capacity = str(arg(args, 0, "256"))
     size_bits = require_int(arg(args, 1, 512), name="size")
@@ -99,7 +99,7 @@ def _format_digest(digest: bytes, output: str) -> Data:
     raise ValueError(f"unsupported output encoding: {output}")
 
 
-@operation("BLAKE2b", category="Hashing")
+@implementation("BLAKE2b", category="Hashing")
 def blake2b(value: Data, args: Args) -> Data:
     size_bits = require_int(arg(args, 0, "512"), name="size")
     output = str(arg(args, 1, "Hex"))
@@ -108,7 +108,7 @@ def blake2b(value: Data, args: Args) -> Data:
     return _format_digest(digest, output)
 
 
-@operation("BLAKE2s", category="Hashing")
+@implementation("BLAKE2s", category="Hashing")
 def blake2s(value: Data, args: Args) -> Data:
     size_bits = require_int(arg(args, 0, "256"), name="size")
     output = str(arg(args, 1, "Hex"))
@@ -117,7 +117,7 @@ def blake2s(value: Data, args: Args) -> Data:
     return _format_digest(digest, output)
 
 
-@operation("HMAC", category="Hashing")
+@implementation("HMAC", category="Hashing")
 def hmac_hash(value: Data, args: Args) -> str:
     key = _toggle_bytes(arg(args, 0, {"string": "", "option": "Hex"}))
     requested = str(arg(args, 1, "SHA256")).upper().replace("-", "")
@@ -137,12 +137,12 @@ def hmac_hash(value: Data, args: Args) -> str:
     return hmac.new(key, to_bytes(value), algorithm).hexdigest()
 
 
-@operation("Adler-32 Checksum", category="Hashing")
+@implementation("Adler-32 Checksum", category="Hashing")
 def adler32(value: Data, _args: Args) -> str:
     return f"{zlib.adler32(to_bytes(value)) & 0xFFFFFFFF:08x}"
 
 
-@operation("XOR Checksum", category="Hashing")
+@implementation("XOR Checksum", category="Hashing")
 def xor_checksum(value: Data, args: Args) -> str:
     block_size = require_int(arg(args, 0, 4), name="block size")
     if block_size < 1:
@@ -162,31 +162,31 @@ def _fletcher(data: bytes, word_size: int, modulus: int) -> tuple[int, int]:
     return first, second
 
 
-@operation("Fletcher-8 Checksum", category="Hashing")
+@implementation("Fletcher-8 Checksum", category="Hashing")
 def fletcher8(value: Data, _args: Args) -> str:
     first, second = _fletcher(to_bytes(value), 1, 0xF)
     return f"{(second << 4) | first:02x}"
 
 
-@operation("Fletcher-16 Checksum", category="Hashing")
+@implementation("Fletcher-16 Checksum", category="Hashing")
 def fletcher16(value: Data, _args: Args) -> str:
     first, second = _fletcher(to_bytes(value), 1, 0xFF)
     return f"{(second << 8) | first:04x}"
 
 
-@operation("Fletcher-32 Checksum", category="Hashing")
+@implementation("Fletcher-32 Checksum", category="Hashing")
 def fletcher32(value: Data, _args: Args) -> str:
     first, second = _fletcher(to_bytes(value), 2, 0xFFFF)
     return f"{((second << 16) | first) & 0xFFFFFFFF:08x}"
 
 
-@operation("Fletcher-64 Checksum", category="Hashing")
+@implementation("Fletcher-64 Checksum", category="Hashing")
 def fletcher64(value: Data, _args: Args) -> str:
     first, second = _fletcher(to_bytes(value), 4, 0xFFFFFFFF)
     return f"{second & 0xFFFFFFFF:08x}{first & 0xFFFFFFFF:08x}"
 
 
-@operation("MurmurHash3", category="Hashing")
+@implementation("MurmurHash3", category="Hashing")
 def murmur_hash3(value: Data, args: Args) -> str:
     seed = require_int(arg(args, 0, 0), name="seed") & 0xFFFFFFFF
     signed = bool(arg(args, 1, False))
@@ -222,7 +222,7 @@ def murmur_hash3(value: Data, args: Args) -> str:
     return str(hash_value)
 
 
-@operation("Entropy", category="Analysis")
+@implementation("Entropy", category="Analysis")
 def entropy(value: Data, args: Args) -> str:
     visualisation = str(arg(args, 0, "Shannon scale"))
     if visualisation != "Shannon scale":
@@ -235,7 +235,7 @@ def entropy(value: Data, args: Args) -> str:
     return str(result)
 
 
-@operation("Hamming Distance", category="Analysis")
+@implementation("Hamming Distance", category="Analysis")
 def hamming_distance(value: Data, args: Args) -> str:
     delimiter = str(arg(args, 0, "\n\n")).replace("\\n", "\n").replace("\\t", "\t")
     unit = str(arg(args, 1, "Byte"))
@@ -259,7 +259,7 @@ def hamming_distance(value: Data, args: Args) -> str:
     return str(distance)
 
 
-@operation("Index of Coincidence", category="Analysis")
+@implementation("Index of Coincidence", category="Analysis")
 def index_of_coincidence(value: Data, _args: Args) -> str:
     text = to_text(value)
     if len(text) < 2:
@@ -269,7 +269,7 @@ def index_of_coincidence(value: Data, _args: Args) -> str:
     return str(result)
 
 
-@operation("Chi Square", category="Analysis")
+@implementation("Chi Square", category="Analysis")
 def chi_square(value: Data, _args: Args) -> str:
     data = to_bytes(value)
     if not data:
@@ -280,26 +280,39 @@ def chi_square(value: Data, _args: Args) -> str:
     return str(result)
 
 
-@operation("CRC Checksum", category="Hashing")
+@implementation("CRC Checksum", category="Hashing")
 def crc_checksum(value: Data, args: Args) -> str:
     name = str(arg(args, 0, "CRC-32/ISO-HDLC"))
     data = to_bytes(value)
-    if name in {"CRC-32", "CRC-32/ISO-HDLC", "CRC-32/ADCCP"}:
-        return f"{zlib.crc32(data) & 0xFFFFFFFF:08x}"
-    if name in {"CRC-32C", "CRC-32/CASTAGNOLI"}:
-        return f"{_crc(data, 32, 0x1EDC6F41, 0xFFFFFFFF, True, True, 0xFFFFFFFF):08x}"
-    if name in {"CRC-16/ARC", "CRC-16/IBM"}:
-        return f"{_crc(data, 16, 0x8005, 0, True, True, 0):04x}"
     if name == "Custom":
-        width = require_int(arg(args, 1, 8), name="width")
-        polynomial = int(str(arg(args, 2, "0x07")), 0)
-        initial = int(str(arg(args, 3, "0x00")), 0)
-        reflect_input = bool(arg(args, 4, False))
-        reflect_output = bool(arg(args, 5, False))
-        xor_output = int(str(arg(args, 6, "0x00")), 0)
-        result = _crc(data, width, polynomial, initial, reflect_input, reflect_output, xor_output)
-        return f"{result:0{(width + 3) // 4}x}"
-    raise ValueError(f"CRC model is not implemented: {name}")
+
+        def text_argument(index: int, default: str) -> str:
+            value = arg(args, index, default)
+            return str(value.get("string", default)) if isinstance(value, dict) else str(value)
+
+        width = int(text_argument(1, "8"), 10)
+
+        def hexadecimal(index: int, default: str) -> int:
+            text = text_argument(index, default)
+            return int(text, 0) if text.lower().startswith("0x") else int(text, 16)
+
+        polynomial = hexadecimal(2, "07")
+        initial = hexadecimal(3, "00")
+        reflect_input = str(arg(args, 4, "False")).lower() in {"true", "1"}
+        reflect_output = str(arg(args, 5, "False")).lower() in {"true", "1"}
+        xor_output = hexadecimal(6, "00")
+        parameters = width, polynomial, initial, reflect_input, reflect_output, xor_output
+    else:
+        aliases = {"CRC-32C": "CRC-32/CASTAGNOLI", "CRC-16/IBM": "CRC-16/ARC"}
+        try:
+            parameters = CRC_MODELS[aliases.get(name, name)]
+        except KeyError as exc:
+            raise ValueError(f"Unknown CRC model: {name}") from exc
+    width, polynomial, initial, reflect_input, reflect_output, xor_output = parameters
+    if not 1 <= width <= 4096:
+        raise ValueError("CRC width must be between 1 and 4096 bits")
+    result = _crc(data, width, polynomial, initial, reflect_input, reflect_output, xor_output)
+    return f"{result:0{(width + 3) // 4}x}"
 
 
 def _reflect(number: int, width: int) -> int:
@@ -325,18 +338,13 @@ def _crc(
     for byte in data:
         if reflect_input:
             byte = _reflect(byte, 8)
-        if width >= 8:
-            register ^= byte << (width - 8)
-            rounds = 8
-        else:
-            register ^= byte >> (8 - width)
-            rounds = width
-        for _ in range(rounds):
-            register = (
-                ((register << 1) ^ polynomial) & mask
-                if register & top_bit
-                else (register << 1) & mask
-            )
+        for input_bit in (0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01):
+            feedback = register & top_bit
+            register = (register << 1) & mask
+            if byte & input_bit:
+                feedback ^= top_bit
+            if feedback:
+                register ^= polynomial
     if reflect_output:
         register = _reflect(register, width)
     return (register ^ xor_output) & mask

@@ -7,3 +7,5 @@ https://github.com/gchq/CyberChef
 
 All ported source files have been rewritten in Python and modified for this project.
 
+Additional permissively licensed reference implementations were used for
+compatibility work. Their notices are reproduced in THIRD_PARTY_LICENSES.md.

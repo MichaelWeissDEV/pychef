@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, require_int
 
@@ -208,7 +208,7 @@ def _format_arm(
     return output + instruction
 
 
-@operation("Disassemble ARM", category="Shellcode")
+@implementation("Disassemble ARM", category="Shellcode")
 def disassemble_arm(value: Data, args: Args) -> str:
     data = _machine_bytes(value)
     if not data:
@@ -425,7 +425,7 @@ def _x86_instruction(data: bytes, start: int, address: int, mode: int) -> tuple[
     return " ".join([*prefixes, instruction]), position
 
 
-@operation("Disassemble x86", category="Shellcode")
+@implementation("Disassemble x86", category="Shellcode")
 def disassemble_x86(value: Data, args: Args) -> str:
     data = _machine_bytes(value)
     mode_text = str(arg(args, 0, "64"))

@@ -13,6 +13,22 @@ import pytest
 from pychef import registry
 from pychef.operations import image_ops
 
+_INDEPENDENT_JPEG_420 = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEP"
+    "ERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4e"
+    "Hh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAIAAgD"
+    "ASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUF"
+    "BAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0"
+    "NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKj"
+    "pKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QA"
+    "HwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEE"
+    "BSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZH"
+    "SElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0"
+    "tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDn"
+    "fAHhz4a28KSy6rhRj/lwuMk+g/d0UUV3cR1sRk2JjhsLUajyp62bu7+XkfoHBOXVKmVxcsTU+9f/"
+    "ACJ//9k="
+)
+
 
 def run(name: str, value: str | bytes, args: Sequence[Any] | None = None) -> Any:
     return registry.get(name).run(value, args or [])
@@ -145,16 +161,34 @@ def test_palette_bit_planes_channels_and_extraction(rgba_png: bytes) -> None:
     assert isinstance(column_bits, bytes) and len(column_bits) == 2
 
 
-def test_format_conversion_png_bmp_ppm(rgba_png: bytes) -> None:
+def test_format_conversion_png_bmp_ppm_tiff(rgba_png: bytes) -> None:
     png = run("Convert Image Format", rgba_png, ["PNG", 80, "None", 1])
     assert png.startswith(image_ops._PNG_SIGNATURE)
     bmp = run("Convert Image Format", rgba_png, ["BMP"])
     assert bmp.startswith(b"BM") and dimensions(bmp) == (4, 3)
     ppm = run("Convert Image Format", rgba_png, ["PPM"])
     assert ppm.startswith(b"P6") and dimensions(ppm) == (4, 3)
-    fallback = run("Convert Image Format", rgba_png, ["JPEG"])
-    assert fallback.startswith(b"P6")
+    tiff = run("Convert Image Format", rgba_png, ["TIFF"])
+    assert tiff.startswith(b"II*\0") and dimensions(tiff) == (4, 3)
+    assert image_ops._image(tiff)[0].pixels == image_ops._image(rgba_png)[0].pixels
+    jpeg = run("Convert Image Format", rgba_png, ["JPEG", 90])
+    assert jpeg.startswith(b"\xff\xd8\xff\xe0") and jpeg.endswith(b"\xff\xd9")
+    assert dimensions(jpeg) == (4, 3)
+    assert run("Render Image", jpeg).startswith(image_ops._PNG_SIGNATURE)
     assert run("Render Image", bmp).startswith(image_ops._PNG_SIGNATURE)
+
+
+def test_jpeg_decoder_accepts_independent_420_stream() -> None:
+    image, metadata = image_ops._image(_INDEPENDENT_JPEG_420)
+    assert (image.width, image.height, len(image.pixels), metadata) == (8, 8, 64, {})
+    assert all(0 <= channel <= 255 for pixel in image.pixels for channel in pixel)
+
+
+def test_gif_input_is_supported_for_conversion() -> None:
+    gif = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==")
+    assert dimensions(gif) == (1, 1)
+    converted = run("Convert Image Format", gif, ["PNG"])
+    assert converted.startswith(image_ops._PNG_SIGNATURE)
 
 
 def test_add_text_alignment(rgba_png: bytes) -> None:

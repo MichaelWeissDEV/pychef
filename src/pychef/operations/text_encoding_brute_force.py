@@ -6,7 +6,7 @@ import codecs
 import json
 from functools import cache
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg
 
@@ -214,7 +214,7 @@ def _codec_name(code_page: int) -> str | None:
     return None
 
 
-@operation("Text Encoding Brute Force", category="Encodings")
+@implementation("Text Encoding Brute Force", category="Encodings")
 def text_encoding_brute_force(value: Data, args: Args) -> Data:
     mode = str(arg(args, 0, "Encode"))
     text = to_text(value)

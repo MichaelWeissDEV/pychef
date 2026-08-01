@@ -6,7 +6,7 @@ import math
 import secrets
 from functools import lru_cache
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg, require_int
 from .modern_ciphers import _formatted_input, _formatted_output, _toggle_bytes
@@ -283,11 +283,11 @@ def _rc6(value: Data, args: Args, *, decrypting: bool) -> Data:
     return _formatted_output(result, output_format)
 
 
-@operation("RC6 Encrypt", category="Ciphers")
+@implementation("RC6 Encrypt", category="Ciphers")
 def rc6_encrypt(value: Data, args: Args) -> Data:
     return _rc6(value, args, decrypting=False)
 
 
-@operation("RC6 Decrypt", category="Ciphers")
+@implementation("RC6 Decrypt", category="Ciphers")
 def rc6_decrypt(value: Data, args: Args) -> Data:
     return _rc6(value, args, decrypting=True)

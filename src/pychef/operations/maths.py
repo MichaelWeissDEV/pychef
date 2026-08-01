@@ -9,7 +9,7 @@ from collections.abc import Callable
 from decimal import Decimal, InvalidOperation, getcontext
 from functools import reduce
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep, require_int
 
@@ -64,43 +64,43 @@ def _bitwise(
     return bytes(output)
 
 
-@operation("XOR", category="Bitwise")
+@implementation("XOR", category="Bitwise")
 def xor(value: Data, args: Args) -> bytes:
     return _bitwise(value, args, lambda left, right: left ^ right, xor=True)
 
 
-@operation("AND", category="Bitwise")
+@implementation("AND", category="Bitwise")
 def bitwise_and(value: Data, args: Args) -> bytes:
     return _bitwise(value, args, lambda left, right: left & right)
 
 
-@operation("OR", category="Bitwise")
+@implementation("OR", category="Bitwise")
 def bitwise_or(value: Data, args: Args) -> bytes:
     return _bitwise(value, args, lambda left, right: left | right)
 
 
-@operation("ADD", category="Bitwise")
+@implementation("ADD", category="Bitwise")
 def add_bytes(value: Data, args: Args) -> bytes:
     return _bitwise(value, args, lambda left, right: (left + right) % 256)
 
 
-@operation("SUB", category="Bitwise")
+@implementation("SUB", category="Bitwise")
 def subtract_bytes(value: Data, args: Args) -> bytes:
     return _bitwise(value, args, lambda left, right: (left - right) % 256)
 
 
-@operation("NOT", category="Bitwise")
+@implementation("NOT", category="Bitwise")
 def bitwise_not(value: Data, _args: Args) -> bytes:
     return bytes((~byte) & 0xFF for byte in to_bytes(value))
 
 
-@operation("Bit shift left", category="Bitwise")
+@implementation("Bit shift left", category="Bitwise")
 def bit_shift_left(value: Data, args: Args) -> bytes:
     amount = require_int(arg(args, 0, 1))
     return bytes((byte << amount) & 0xFF for byte in to_bytes(value))
 
 
-@operation("Bit shift right", category="Bitwise")
+@implementation("Bit shift right", category="Bitwise")
 def bit_shift_right(value: Data, args: Args) -> bytes:
     amount = require_int(arg(args, 0, 1))
     arithmetic = str(arg(args, 1, "Logical shift")) == "Arithmetic shift"
@@ -136,17 +136,17 @@ def _rotate(value: Data, args: Args, left: bool) -> bytes:
     return number.to_bytes(len(data), "big")
 
 
-@operation("Rotate left", category="Bitwise")
+@implementation("Rotate left", category="Bitwise")
 def rotate_left(value: Data, args: Args) -> bytes:
     return _rotate(value, args, True)
 
 
-@operation("Rotate right", category="Bitwise")
+@implementation("Rotate right", category="Bitwise")
 def rotate_right(value: Data, args: Args) -> bytes:
     return _rotate(value, args, False)
 
 
-@operation("ROR13", category="Hashing")
+@implementation("ROR13", category="Hashing")
 def ror13(value: Data, _args: Args) -> str:
     result = 0
     for byte in to_bytes(value):
@@ -185,38 +185,38 @@ def _reduce_numbers(
     return _decimal_text(reduce(function, numbers))
 
 
-@operation("Sum", category="Arithmetic")
+@implementation("Sum", category="Arithmetic")
 def sum_numbers(value: Data, args: Args) -> str:
     return _decimal_text(sum(_numbers(value, arg(args, 0, "Space")), Decimal(0)))
 
 
-@operation("Subtract", category="Arithmetic")
+@implementation("Subtract", category="Arithmetic")
 def subtract_numbers(value: Data, args: Args) -> str:
     return _reduce_numbers(value, args, lambda left, right: left - right)
 
 
-@operation("Multiply", category="Arithmetic")
+@implementation("Multiply", category="Arithmetic")
 def multiply_numbers(value: Data, args: Args) -> str:
     return _reduce_numbers(value, args, lambda left, right: left * right)
 
 
-@operation("Divide", category="Arithmetic")
+@implementation("Divide", category="Arithmetic")
 def divide_numbers(value: Data, args: Args) -> str:
     return _reduce_numbers(value, args, lambda left, right: left / right)
 
 
-@operation("Mean", category="Arithmetic")
+@implementation("Mean", category="Arithmetic")
 def mean(value: Data, args: Args) -> str:
     numbers = _numbers(value, arg(args, 0, "Space"))
     return _decimal_text(sum(numbers, Decimal(0)) / len(numbers))
 
 
-@operation("Median", category="Arithmetic")
+@implementation("Median", category="Arithmetic")
 def median(value: Data, args: Args) -> str:
     return _decimal_text(Decimal(statistics.median(_numbers(value, arg(args, 0, "Space")))))
 
 
-@operation("Standard Deviation", category="Arithmetic")
+@implementation("Standard Deviation", category="Arithmetic")
 def standard_deviation(value: Data, args: Args) -> str:
     numbers = _numbers(value, arg(args, 0, "Space"))
     average = sum(numbers, Decimal(0)) / len(numbers)
@@ -224,7 +224,7 @@ def standard_deviation(value: Data, args: Args) -> str:
     return _decimal_text(variance.sqrt())
 
 
-@operation("MOD", category="Arithmetic")
+@implementation("MOD", category="Arithmetic")
 def modulus(value: Data, args: Args) -> str:
     divisor = Decimal(str(arg(args, 0, 2)))
     if not divisor:
@@ -246,7 +246,7 @@ def _egcd(left: int, right: int) -> tuple[int, int, int]:
     return old_r, old_s, old_t
 
 
-@operation("Extended GCD", category="Arithmetic")
+@implementation("Extended GCD", category="Arithmetic")
 def extended_gcd(value: Data, args: Args) -> str:
     left_arg, right_arg = str(arg(args, 0, "")).strip(), str(arg(args, 1, "")).strip()
     input_value = to_text(value).strip()
@@ -262,7 +262,7 @@ def extended_gcd(value: Data, args: Args) -> str:
     return f"gcd: {abs(divisor)}\n\nBezout coefficients:\nx = {x}\ny = {y}\n\n"
 
 
-@operation("Modular Exponentiation", category="Arithmetic")
+@implementation("Modular Exponentiation", category="Arithmetic")
 def modular_exponentiation(value: Data, args: Args) -> str:
     base_arg = str(arg(args, 0, "")).strip()
     modulus_arg = str(arg(args, 1, "1")).strip()
@@ -279,7 +279,7 @@ def modular_exponentiation(value: Data, args: Args) -> str:
     return str(pow(int(base, 0), int(exponent, 0), int(modulus_arg, 0)))
 
 
-@operation("Modular Inverse", category="Arithmetic")
+@implementation("Modular Inverse", category="Arithmetic")
 def modular_inverse(value: Data, args: Args) -> str:
     number_arg = str(arg(args, 0, "")).strip()
     modulus_arg = str(arg(args, 1, "")).strip()
@@ -295,7 +295,7 @@ def modular_inverse(value: Data, args: Args) -> str:
     return str(pow(int(number, 0), -1, int(modulus_value, 0)))
 
 
-@operation("Text-Integer Conversion", category="Arithmetic")
+@implementation("Text-Integer Conversion", category="Arithmetic")
 def text_integer_conversion(value: Data, args: Args) -> str:
     output_format = str(arg(args, 0, "String"))
     text = to_text(value).strip()
@@ -316,7 +316,7 @@ def text_integer_conversion(value: Data, args: Args) -> str:
     return number.to_bytes(size, "big").decode("utf-8", "replace").lstrip("\0")
 
 
-@operation("Levenshtein Distance", category="Arithmetic")
+@implementation("Levenshtein Distance", category="Arithmetic")
 def levenshtein_distance(value: Data, args: Args) -> str:
     delimiter = str(arg(args, 0, "\n")).replace("\\n", "\n")
     insertion = require_int(arg(args, 1, 1))
@@ -341,7 +341,7 @@ def levenshtein_distance(value: Data, args: Args) -> str:
     return str(previous[-1])
 
 
-@operation("Haversine distance", category="Arithmetic")
+@implementation("Haversine distance", category="Arithmetic")
 def haversine_distance(value: Data, _args: Args) -> str:
     coordinates = [float(part.strip()) for part in to_text(value).split(",")]
     if len(coordinates) != 4:

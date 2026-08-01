@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, require_int
 
@@ -87,7 +87,7 @@ def _transform(key: str, text: str, *, decrypting: bool) -> str:
     return "".join(output)
 
 
-@operation("LS47 Encrypt", category="Ciphers")
+@implementation("LS47 Encrypt", category="Ciphers")
 def ls47_encrypt(value: Data, args: Args) -> str:
     password = str(arg(args, 0, ""))
     padding_size = require_int(arg(args, 1, 10), name="padding")
@@ -97,7 +97,7 @@ def ls47_encrypt(value: Data, args: Args) -> str:
     return _transform(_derive_key(password), plaintext, decrypting=False)
 
 
-@operation("LS47 Decrypt", category="Ciphers")
+@implementation("LS47 Decrypt", category="Ciphers")
 def ls47_decrypt(value: Data, args: Args) -> str:
     password = str(arg(args, 0, ""))
     padding_size = require_int(arg(args, 1, 10), name="padding")

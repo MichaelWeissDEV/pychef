@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg
 from .modern_ciphers import _formatted_input
@@ -79,12 +79,12 @@ def _hassh(value: Data, args: Args, *, server: bool) -> str:
     return digest
 
 
-@operation("HASSH Client Fingerprint", category="Crypto")
+@implementation("HASSH Client Fingerprint", category="Crypto")
 def hassh_client(value: Data, args: Args) -> Data:
     return _hassh(value, args, server=False)
 
 
-@operation("HASSH Server Fingerprint", category="Crypto")
+@implementation("HASSH Server Fingerprint", category="Crypto")
 def hassh_server(value: Data, args: Args) -> Data:
     return _hassh(value, args, server=True)
 
@@ -116,7 +116,7 @@ def _tls_record(value: Data, input_format: str, handshake_type: int) -> _Reader:
     return reader
 
 
-@operation("JA3 Fingerprint", category="Crypto")
+@implementation("JA3 Fingerprint", category="Crypto")
 def ja3(value: Data, args: Args) -> Data:
     output_format = str(arg(args, 1, "Hash digest"))
     reader = _tls_record(value, str(arg(args, 0, "Hex")), 1)
@@ -155,7 +155,7 @@ def ja3(value: Data, args: Args) -> Data:
     return digest
 
 
-@operation("JA3S Fingerprint", category="Crypto")
+@implementation("JA3S Fingerprint", category="Crypto")
 def ja3s(value: Data, args: Args) -> Data:
     output_format = str(arg(args, 1, "Hash digest"))
     reader = _tls_record(value, str(arg(args, 0, "Hex")), 2)
@@ -334,7 +334,7 @@ def _ja4s_values(value: Data, input_format: str) -> dict[str, str]:
     }
 
 
-@operation("JA4 Fingerprint", category="Crypto")
+@implementation("JA4 Fingerprint", category="Crypto")
 def ja4(value: Data, args: Args) -> Data:
     output_format = str(arg(args, 1, "JA4"))
     values = _ja4_values(value, str(arg(args, 0, "Hex")))
@@ -352,7 +352,7 @@ def ja4(value: Data, args: Args) -> Data:
     )
 
 
-@operation("JA4Server Fingerprint", category="Crypto")
+@implementation("JA4Server Fingerprint", category="Crypto")
 def ja4_server(value: Data, args: Args) -> Data:
     output_format = str(arg(args, 1, "JA4S"))
     values = _ja4s_values(value, str(arg(args, 0, "Hex")))

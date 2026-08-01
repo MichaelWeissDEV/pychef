@@ -7,7 +7,7 @@ import re
 import struct
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, require_int
 
@@ -129,7 +129,7 @@ def _stream_result(data: bytes, block_function: Any, counter: int, output_format
     return bytes(output)
 
 
-@operation("ChaCha", category="Ciphers")
+@implementation("ChaCha", category="Ciphers")
 def chacha(value: Data, args: Args) -> Data:
     key = _stream_bytes(arg(args, 0, {"option": "Hex", "string": ""}))
     nonce_arg = arg(args, 1, {"option": "Hex", "string": ""})
@@ -182,11 +182,11 @@ def _salsa(value: Data, args: Args, *, extended: bool) -> Data:
     )
 
 
-@operation("Salsa20", category="Ciphers")
+@implementation("Salsa20", category="Ciphers")
 def salsa20(value: Data, args: Args) -> Data:
     return _salsa(value, args, extended=False)
 
 
-@operation("XSalsa20", category="Ciphers")
+@implementation("XSalsa20", category="Ciphers")
 def xsalsa20(value: Data, args: Args) -> Data:
     return _salsa(value, args, extended=True)

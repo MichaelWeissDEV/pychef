@@ -7,7 +7,7 @@ import math
 import struct
 from typing import Any
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 
 _MAX_CONTAINER_ITEMS = 1_000_000
@@ -74,10 +74,12 @@ def _cbor_encode(value: Any, depth: int = 0) -> bytes:
     if isinstance(value, dict):
         if len(value) > _MAX_CONTAINER_ITEMS:
             raise ValueError("CBOR map is too large")
-        return _sized_integer(5, len(value)) + b"".join(
-            _cbor_encode(key, depth + 1) + _cbor_encode(item, depth + 1)
+        entries = [
+            (_cbor_encode(key, depth + 1), _cbor_encode(item, depth + 1))
             for key, item in value.items()
-        )
+        ]
+        entries.sort(key=lambda entry: (len(entry[0]), entry[0]))
+        return _sized_integer(5, len(value)) + b"".join(key + item for key, item in entries)
     raise ValueError(f"unsupported CBOR value: {type(value).__name__}")
 
 
@@ -97,13 +99,39 @@ class _Reader:
         return self.read(1)[0]
 
 
-def _cbor_length(reader: _Reader, additional: int) -> int:
+def _cbor_length(reader: _Reader, additional: int) -> int | None:
     if additional < 24:
         return additional
+    if additional == 31:
+        return None
     sizes = {24: 1, 25: 2, 26: 4, 27: 8}
     if additional not in sizes:
-        raise ValueError("indefinite or reserved CBOR length is unsupported")
+        raise ValueError("reserved CBOR additional information")
     return int.from_bytes(reader.read(sizes[additional]), "big")
+
+
+def _cbor_break(reader: _Reader) -> bool:
+    if reader.position < len(reader.data) and reader.data[reader.position] == 0xFF:
+        reader.position += 1
+        return True
+    return False
+
+
+def _cbor_indefinite_string(reader: _Reader, major: int) -> bytes | str:
+    byte_chunks: list[bytes] = []
+    text_chunks: list[str] = []
+    while not _cbor_break(reader):
+        initial = reader.byte()
+        chunk_major, additional = initial >> 5, initial & 31
+        length = _cbor_length(reader, additional)
+        if chunk_major != major or length is None:
+            raise ValueError("invalid chunk in indefinite-length CBOR string")
+        raw = reader.read(length)
+        if major == 2:
+            byte_chunks.append(raw)
+        else:
+            text_chunks.append(raw.decode())
+    return b"".join(byte_chunks) if major == 2 else "".join(text_chunks)
 
 
 def _cbor_decode(reader: _Reader, depth: int = 0) -> Any:
@@ -113,47 +141,75 @@ def _cbor_decode(reader: _Reader, depth: int = 0) -> Any:
     major, additional = initial >> 5, initial & 31
     if major in {0, 1}:
         value = _cbor_length(reader, additional)
+        if value is None:
+            raise ValueError("CBOR integers cannot have indefinite length")
         return value if major == 0 else -1 - value
     if major in {2, 3}:
         length = _cbor_length(reader, additional)
+        if length is None:
+            return _cbor_indefinite_string(reader, major)
         raw = reader.read(length)
         return raw if major == 2 else raw.decode()
     if major == 4:
         length = _cbor_length(reader, additional)
+        if length is None:
+            result = []
+            while not _cbor_break(reader):
+                if len(result) >= _MAX_CONTAINER_ITEMS:
+                    raise ValueError("CBOR array is too large")
+                result.append(_cbor_decode(reader, depth + 1))
+            return result
         if length > _MAX_CONTAINER_ITEMS:
             raise ValueError("CBOR array is too large")
         return [_cbor_decode(reader, depth + 1) for _ in range(length)]
     if major == 5:
         length = _cbor_length(reader, additional)
+        if length is None:
+            result = {}
+            while not _cbor_break(reader):
+                key = _cbor_decode(reader, depth + 1)
+                if _cbor_break(reader):
+                    raise ValueError("indefinite CBOR map ends without a value")
+                if len(result) >= _MAX_CONTAINER_ITEMS:
+                    raise ValueError("CBOR map is too large")
+                result[key] = _cbor_decode(reader, depth + 1)
+            return result
         if length > _MAX_CONTAINER_ITEMS:
             raise ValueError("CBOR map is too large")
         return {
             _cbor_decode(reader, depth + 1): _cbor_decode(reader, depth + 1) for _ in range(length)
         }
     if major == 6:
-        _cbor_length(reader, additional)
+        if _cbor_length(reader, additional) is None:
+            raise ValueError("CBOR tags cannot have indefinite length")
         return _cbor_decode(reader, depth + 1)
+    if additional < 20:
+        return additional
     if additional == 20:
         return False
     if additional == 21:
         return True
     if additional in {22, 23}:
         return None
+    if additional == 24:
+        return reader.byte()
     if additional == 25:
         return struct.unpack(">e", reader.read(2))[0]
     if additional == 26:
         return struct.unpack(">f", reader.read(4))[0]
     if additional == 27:
         return struct.unpack(">d", reader.read(8))[0]
+    if additional == 31:
+        raise ValueError("unexpected CBOR break marker")
     raise ValueError("unsupported CBOR simple value")
 
 
-@operation("CBOR Encode", category="Serialisation")
+@implementation("CBOR Encode", category="Serialisation")
 def cbor_encode(value: Data, _args: Args) -> bytes:
     return _cbor_encode(_load_json(value))
 
 
-@operation("CBOR Decode", category="Serialisation")
+@implementation("CBOR Decode", category="Serialisation")
 def cbor_decode(value: Data, _args: Args) -> str:
     reader = _Reader(to_bytes(value))
     decoded = _cbor_decode(reader)
@@ -293,12 +349,12 @@ def _msgpack_decode(reader: _Reader, depth: int = 0) -> Any:
     raise ValueError(f"unsupported MessagePack marker: 0x{marker:02x}")
 
 
-@operation("To MessagePack", category="Serialisation")
+@implementation("To MessagePack", category="Serialisation")
 def to_messagepack(value: Data, _args: Args) -> bytes:
     return _msgpack_encode(_load_json(value))
 
 
-@operation("From MessagePack", category="Serialisation")
+@implementation("From MessagePack", category="Serialisation")
 def from_messagepack(value: Data, _args: Args) -> str:
     reader = _Reader(to_bytes(value))
     decoded = _msgpack_decode(reader)
@@ -390,7 +446,7 @@ def _bson_decode_document(reader: _Reader, depth: int = 0) -> dict[str, Any]:
     return output
 
 
-@operation("BSON serialise", category="Serialisation")
+@implementation("BSON serialise", category="Serialisation")
 def bson_serialize(value: Data, _args: Args) -> bytes:
     if not to_bytes(value):
         return b""
@@ -400,7 +456,7 @@ def bson_serialize(value: Data, _args: Args) -> bytes:
     return _bson_document(parsed)
 
 
-@operation("BSON deserialise", category="Serialisation")
+@implementation("BSON deserialise", category="Serialisation")
 def bson_deserialize(value: Data, _args: Args) -> str:
     if not to_bytes(value):
         return ""

@@ -12,7 +12,7 @@ from http.client import HTTPMessage
 from typing import IO, Any, cast
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, char_rep, require_int
 
@@ -42,7 +42,7 @@ def _finish(matches: list[str], display_total: bool, sort: bool, unique: bool) -
     return f"Total found: {len(matches)}\n\n{output}" if display_total else output
 
 
-@operation("Defang IP Addresses", category="Networking")
+@implementation("Defang IP Addresses", category="Networking")
 def defang_ip(value: Data, _args: Args) -> str:
     text = to_text(value)
     text = _IPV4_CANDIDATE.sub(lambda match: match.group(0).replace(".", "[.]"), text)
@@ -54,7 +54,7 @@ def defang_ip(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Defang URL", category="Networking")
+@implementation("Defang URL", category="Networking")
 def defang_url(value: Data, args: Args) -> str:
     dots = bool(arg(args, 0, True))
     http = bool(arg(args, 1, True))
@@ -73,7 +73,7 @@ def defang_url(value: Data, args: Args) -> str:
     return text
 
 
-@operation("Fang URL", category="Networking")
+@implementation("Fang URL", category="Networking")
 def fang_url(value: Data, args: Args) -> str:
     text = to_text(value)
     if bool(arg(args, 0, True)):
@@ -85,7 +85,7 @@ def fang_url(value: Data, args: Args) -> str:
     return text
 
 
-@operation("Extract IP addresses", category="Networking")
+@implementation("Extract IP addresses", category="Networking")
 def extract_ip_addresses(value: Data, args: Args) -> str:
     text = to_text(value)
     matches: list[str] = []
@@ -112,7 +112,7 @@ def extract_ip_addresses(value: Data, args: Args) -> str:
     )
 
 
-@operation("Extract email addresses", category="Networking")
+@implementation("Extract email addresses", category="Networking")
 def extract_email_addresses(value: Data, args: Args) -> str:
     return _finish(
         _EMAIL.findall(to_text(value)),
@@ -122,7 +122,7 @@ def extract_email_addresses(value: Data, args: Args) -> str:
     )
 
 
-@operation("Extract URLs", category="Networking")
+@implementation("Extract URLs", category="Networking")
 def extract_urls(value: Data, args: Args) -> str:
     matches = [match.rstrip(".,;:!?)") for match in _URL.findall(to_text(value))]
     return _finish(
@@ -130,7 +130,7 @@ def extract_urls(value: Data, args: Args) -> str:
     )
 
 
-@operation("Extract domains", category="Networking")
+@implementation("Extract domains", category="Networking")
 def extract_domains(value: Data, args: Args) -> str:
     matches = [
         match
@@ -142,7 +142,7 @@ def extract_domains(value: Data, args: Args) -> str:
     )
 
 
-@operation("Extract MAC addresses", category="Networking")
+@implementation("Extract MAC addresses", category="Networking")
 def extract_mac_addresses(value: Data, args: Args) -> str:
     matches = _MAC.findall(to_text(value))
     return _finish(
@@ -150,7 +150,7 @@ def extract_mac_addresses(value: Data, args: Args) -> str:
     )
 
 
-@operation("Format MAC addresses", category="Networking")
+@implementation("Format MAC addresses", category="Networking")
 def format_mac_addresses(value: Data, args: Args) -> str:
     case = str(arg(args, 0, "Both"))
     formats: list[str] = []
@@ -174,7 +174,7 @@ def format_mac_addresses(value: Data, args: Args) -> str:
     return "\n".join(dict.fromkeys(formats))
 
 
-@operation("Change IP format", category="Networking")
+@implementation("Change IP format", category="Networking")
 def change_ip_format(value: Data, args: Args) -> str:
     input_format = str(arg(args, 0, "Dotted Decimal"))
     output_format = str(arg(args, 1, "Dotted Decimal"))
@@ -198,7 +198,7 @@ def change_ip_format(value: Data, args: Args) -> str:
     return f"{number:08x}"
 
 
-@operation("Parse IPv6 address", category="Networking")
+@implementation("Parse IPv6 address", category="Networking")
 def parse_ipv6(value: Data, _args: Args) -> str:
     address = ipaddress.IPv6Address(to_text(value).strip())
     output = f"Longhand:  {address.exploded}\nShorthand: {address.compressed}\n"
@@ -221,7 +221,7 @@ def parse_ipv6(value: Data, _args: Args) -> str:
     return output
 
 
-@operation("Parse IP range", category="Networking")
+@implementation("Parse IP range", category="Networking")
 def parse_ip_range(value: Data, args: Args) -> str:
     text = to_text(value).strip()
     include_info = bool(arg(args, 0, True))
@@ -273,7 +273,7 @@ def parse_ip_range(value: Data, args: Args) -> str:
     return (info if include_info else "") + enumeration
 
 
-@operation("Group IP addresses", category="Networking")
+@implementation("Group IP addresses", category="Networking")
 def group_ip_addresses(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     prefix = require_int(arg(args, 1, 24))
@@ -290,7 +290,7 @@ def group_ip_addresses(value: Data, args: Args) -> str:
     )
 
 
-@operation("Parse URI", category="Networking")
+@implementation("Parse URI", category="Networking")
 def parse_uri(value: Data, _args: Args) -> str:
     parsed = urlparse(to_text(value))
     output = ""
@@ -378,7 +378,7 @@ def _request(
         )
 
 
-@operation("HTTP request", category="Networking")
+@implementation("HTTP request", category="Networking")
 def http_request(value: Data, args: Args) -> Data:
     method = str(arg(args, 0, "GET")).upper()
     url = str(arg(args, 1, ""))
@@ -405,7 +405,7 @@ def http_request(value: Data, args: Args) -> Data:
     return f"####\n  Status: {status} {reason}\n  Exposed headers:\n{exposed}####\n\n{text}"
 
 
-@operation("DNS over HTTPS", category="Networking")
+@implementation("DNS over HTTPS", category="Networking")
 def dns_over_https(value: Data, args: Args) -> Data:
     resolver = str(arg(args, 0, "https://dns.google.com/resolve"))
     request_type = str(arg(args, 1, "A")).upper()

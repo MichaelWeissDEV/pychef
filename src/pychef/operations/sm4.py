@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg
 from .modern_ciphers import _formatted_input, _toggle_bytes
@@ -176,11 +176,11 @@ def _sm4(value: Data, args: Args, *, decrypting: bool) -> Data:
     return result
 
 
-@operation("SM4 Encrypt", category="Ciphers")
+@implementation("SM4 Encrypt", category="Ciphers")
 def sm4_encrypt(value: Data, args: Args) -> Data:
     return _sm4(value, args, decrypting=False)
 
 
-@operation("SM4 Decrypt", category="Ciphers")
+@implementation("SM4 Decrypt", category="Ciphers")
 def sm4_decrypt(value: Data, args: Args) -> Data:
     return _sm4(value, args, decrypting=True)

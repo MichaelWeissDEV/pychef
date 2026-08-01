@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 
 _BCRYPT_RE = re.compile(r"^\$(2[abxy])\$(\d{2})\$([./A-Za-z0-9]{22})([./A-Za-z0-9]{31})$")
 
 
-@operation("Bcrypt parse", category="Hashing")
+@implementation("Bcrypt parse", category="Hashing")
 def bcrypt_parse(value: Data, args: Args) -> Data:
     del args
     text = to_text(value)

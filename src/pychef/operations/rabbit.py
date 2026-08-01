@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data
 from ._utils import arg
 from .modern_ciphers import _formatted_input, _formatted_output, _toggle_bytes
@@ -128,7 +128,7 @@ def _crypt(data: bytes, key: bytes, iv: bytes, *, little_endian: bool) -> bytes:
     return bytes(output)
 
 
-@operation("Rabbit", category="Ciphers")
+@implementation("Rabbit", category="Ciphers")
 def rabbit(value: Data, args: Args) -> Data:
     key = _toggle_bytes(arg(args, 0, {"option": "Hex", "string": ""}))
     iv = _toggle_bytes(arg(args, 1, {"option": "Hex", "string": ""}))

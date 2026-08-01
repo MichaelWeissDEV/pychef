@@ -9,7 +9,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, require_int
 
@@ -22,7 +22,7 @@ _UNITS = {
 }
 
 
-@operation("Windows Filetime to UNIX Timestamp", category="Date / Time")
+@implementation("Windows Filetime to UNIX Timestamp", category="Date / Time")
 def windows_filetime_to_unix(value: Data, args: Args) -> str:
     output_units = str(arg(args, 0, "Seconds (s)"))
     input_format = str(arg(args, 1, "Decimal"))
@@ -37,7 +37,7 @@ def windows_filetime_to_unix(value: Data, args: Args) -> str:
     return str(nanoseconds * _UNITS[output_units] // 1_000_000_000)
 
 
-@operation("UNIX Timestamp to Windows Filetime", category="Date / Time")
+@implementation("UNIX Timestamp to Windows Filetime", category="Date / Time")
 def unix_to_windows_filetime(value: Data, args: Args) -> str:
     input_units = str(arg(args, 0, "Seconds (s)"))
     output_format = str(arg(args, 1, "Decimal"))
@@ -54,7 +54,7 @@ def _timestamp_seconds(text: str, units: str) -> float:
     return float(text) / _UNITS[units]
 
 
-@operation("From UNIX Timestamp", category="Date / Time")
+@implementation("From UNIX Timestamp", category="Date / Time")
 def from_unix_timestamp(value: Data, args: Args) -> str:
     units = str(arg(args, 0, "Seconds (s)"))
     instant = datetime.fromtimestamp(_timestamp_seconds(to_text(value), units), tz=timezone.utc)
@@ -104,7 +104,7 @@ def _parse_datetime(text: str, utc: bool) -> datetime:
     return parsed
 
 
-@operation("To UNIX Timestamp", category="Date / Time")
+@implementation("To UNIX Timestamp", category="Date / Time")
 def to_unix_timestamp(value: Data, args: Args) -> str:
     units = str(arg(args, 0, "Seconds (s)"))
     treat_as_utc = bool(arg(args, 1, True))
@@ -208,7 +208,7 @@ def _parse_moment(value: str, format_string: str, zone_name: str) -> datetime:
     return parsed.replace(tzinfo=_zone(zone_name)) if parsed.tzinfo is None else parsed
 
 
-@operation("DateTime Delta", category="Date / Time")
+@implementation("DateTime Delta", category="Date / Time")
 def datetime_delta(value: Data, args: Args) -> str:
     custom_format = str(arg(args, 1, "DD/MM/YYYY HH:mm:ss"))
     direction = -1 if str(arg(args, 2, "Add")) == "Subtract" else 1
@@ -224,7 +224,7 @@ def datetime_delta(value: Data, args: Args) -> str:
     return result.strftime(date_format)
 
 
-@operation("Translate DateTime Format", category="Date / Time")
+@implementation("Translate DateTime Format", category="Date / Time")
 def translate_datetime_format(value: Data, args: Args) -> str:
     input_format = str(arg(args, 1, "DD/MM/YYYY HH:mm:ss"))
     input_zone = str(arg(args, 2, "UTC"))
@@ -237,7 +237,7 @@ def translate_datetime_format(value: Data, args: Args) -> str:
     return _moment_render(parsed.astimezone(_zone(output_zone)), output_format)
 
 
-@operation("Parse DateTime", category="Date / Time")
+@implementation("Parse DateTime", category="Date / Time")
 def parse_datetime(value: Data, args: Args) -> str:
     input_format = str(arg(args, 1, "DD/MM/YYYY HH:mm:ss"))
     input_zone = str(arg(args, 2, "UTC"))
@@ -261,13 +261,13 @@ def parse_datetime(value: Data, args: Args) -> str:
     )
 
 
-@operation("Get Time", category="Date / Time")
+@implementation("Get Time", category="Date / Time")
 def get_time(_value: Data, args: Args) -> str:
     units = str(arg(args, 0, "Milliseconds (ms)"))
     return str(round(time.time() * _UNITS[units]))
 
 
-@operation("Generate UUID", category="Date / Time")
+@implementation("Generate UUID", category="Date / Time")
 def generate_uuid(value: Data, args: Args) -> str:
     version = str(arg(args, 0, "v4"))
     namespace = uuid.UUID(str(arg(args, 1, "1b671a64-40d5-491e-99b0-da01ff1f3341")))
@@ -293,7 +293,7 @@ def generate_uuid(value: Data, args: Args) -> str:
     raise ValueError(f"unsupported UUID version without platform extensions: {version}")
 
 
-@operation("Analyse UUID", category="Date / Time")
+@implementation("Analyse UUID", category="Date / Time")
 def analyse_uuid(value: Data, args: Args) -> str:
     identifier = uuid.UUID(to_text(value).strip())
     output = f"UUID: {identifier}\nVersion: {identifier.version}\nVariant: {identifier.variant}"
@@ -304,7 +304,7 @@ def analyse_uuid(value: Data, args: Args) -> str:
     return output
 
 
-@operation("Parse ObjectID timestamp", category="Date / Time")
+@implementation("Parse ObjectID timestamp", category="Date / Time")
 def parse_objectid_timestamp(value: Data, _args: Args) -> str:
     text = to_text(value).strip()
     if not re.fullmatch(r"[0-9a-fA-F]{24}", text):

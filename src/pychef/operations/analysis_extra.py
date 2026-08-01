@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 
 _FILE_SIGNATURES = (
@@ -22,7 +22,7 @@ _FILE_SIGNATURES = (
 )
 
 
-@operation("Detect File Type", category="Analysis")
+@implementation("Detect File Type", category="Analysis")
 def detect_file_type(value: Data, _args: Args) -> str:
     data = to_bytes(value)
     matches = [entry for entry in _FILE_SIGNATURES if data.startswith(entry[0])]
@@ -42,7 +42,7 @@ def _first(pattern: str, text: str) -> str:
     return match.group(1) if match else "unknown"
 
 
-@operation("Parse User Agent", category="Analysis")
+@implementation("Parse User Agent", category="Analysis")
 def parse_user_agent(value: Data, _args: Args) -> str:
     text = to_text(value).removeprefix("User-Agent:").strip()
     browser_name = "unknown"

@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 from itertools import chain, combinations, product
 from typing import Literal, cast
 
-from ..registry import operation
+from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep, expand_alphabet, require_int
 
@@ -29,7 +29,7 @@ def _escaped(value: object) -> str:
         return text
 
 
-@operation("Reverse", category="Data format")
+@implementation("Reverse", category="Data format")
 def reverse(value: Data, args: Args) -> bytes:
     mode = str(arg(args, 0, "Character"))
     if mode == "Byte":
@@ -44,7 +44,7 @@ def _slice_lines(data: bytes, transform: Callable[[bytes], bytes]) -> bytes:
     return b"\n".join(transform(line) for line in data.split(b"\n"))
 
 
-@operation("Take bytes", category="Data format")
+@implementation("Take bytes", category="Data format")
 def take_bytes(value: Data, args: Args) -> bytes:
     start = require_int(arg(args, 0, 0))
     length = require_int(arg(args, 1, 5))
@@ -53,7 +53,7 @@ def take_bytes(value: Data, args: Args) -> bytes:
     return _slice_lines(data, transform) if bool(arg(args, 2, False)) else transform(data)
 
 
-@operation("Drop bytes", category="Data format")
+@implementation("Drop bytes", category="Data format")
 def drop_bytes(value: Data, args: Args) -> bytes:
     start = require_int(arg(args, 0, 0))
     length = require_int(arg(args, 1, 5))
@@ -62,7 +62,7 @@ def drop_bytes(value: Data, args: Args) -> bytes:
     return _slice_lines(data, transform) if bool(arg(args, 2, False)) else transform(data)
 
 
-@operation("Take nth bytes", category="Data format")
+@implementation("Take nth bytes", category="Data format")
 def take_nth_bytes(value: Data, args: Args) -> bytes:
     every = require_int(arg(args, 0, 4), name="take every")
     start = require_int(arg(args, 1, 0), name="starting at")
@@ -73,7 +73,7 @@ def take_nth_bytes(value: Data, args: Args) -> bytes:
     return _slice_lines(data, transform) if bool(arg(args, 2, False)) else transform(data)
 
 
-@operation("Drop nth bytes", category="Data format")
+@implementation("Drop nth bytes", category="Data format")
 def drop_nth_bytes(value: Data, args: Args) -> bytes:
     every = require_int(arg(args, 0, 4), name="drop every")
     start = require_int(arg(args, 1, 0), name="starting at")
@@ -89,12 +89,12 @@ def drop_nth_bytes(value: Data, args: Args) -> bytes:
     return _slice_lines(data, transform) if bool(arg(args, 2, False)) else transform(data)
 
 
-@operation("Remove null bytes", category="Data format")
+@implementation("Remove null bytes", category="Data format")
 def remove_null_bytes(value: Data, _args: Args) -> bytes:
     return to_bytes(value).replace(b"\0", b"")
 
 
-@operation("Swap endianness", category="Data format")
+@implementation("Swap endianness", category="Data format")
 def swap_endianness(value: Data, args: Args) -> Data:
     data_format = str(arg(args, 0, "Hex"))
     word_length = require_int(arg(args, 1, 4), name="word length")
@@ -116,12 +116,12 @@ def swap_endianness(value: Data, args: Args) -> Data:
     return output.hex() if data_format == "Hex" else output
 
 
-@operation("To Lower case", category="Text")
+@implementation("To Lower case", category="Text")
 def lower_case(value: Data, _args: Args) -> str:
     return to_text(value).lower()
 
 
-@operation("To Upper case", category="Text")
+@implementation("To Upper case", category="Text")
 def upper_case(value: Data, args: Args) -> str:
     scope = str(arg(args, 0, "All"))
     text = to_text(value)
@@ -138,12 +138,12 @@ def upper_case(value: Data, args: Args) -> str:
     return text.upper()
 
 
-@operation("Swap case", category="Text")
+@implementation("Swap case", category="Text")
 def swap_case(value: Data, _args: Args) -> str:
     return to_text(value).swapcase()
 
 
-@operation("Alternating Caps", category="Text")
+@implementation("Alternating Caps", category="Text")
 def alternating_caps(value: Data, _args: Args) -> str:
     return "".join(
         character.upper() if index % 2 == 0 else character.lower()
@@ -156,23 +156,23 @@ def _words(value: Data) -> list[str]:
     return [part for part in re.split(r"[^\w]+|_+", text, flags=re.UNICODE) if part]
 
 
-@operation("To Camel case", category="Text")
+@implementation("To Camel case", category="Text")
 def camel_case(value: Data, _args: Args) -> str:
     words = _words(value)
     return "" if not words else words[0].lower() + "".join(word.capitalize() for word in words[1:])
 
 
-@operation("To Snake case", category="Text")
+@implementation("To Snake case", category="Text")
 def snake_case(value: Data, _args: Args) -> str:
     return "_".join(word.lower() for word in _words(value))
 
 
-@operation("To Kebab case", category="Text")
+@implementation("To Kebab case", category="Text")
 def kebab_case(value: Data, _args: Args) -> str:
     return "-".join(word.lower() for word in _words(value))
 
 
-@operation("Normalise Unicode", category="Text")
+@implementation("Normalise Unicode", category="Text")
 def normalise_unicode(value: Data, args: Args) -> str:
     form = str(arg(args, 0, "NFC"))
     aliases = {
@@ -185,7 +185,7 @@ def normalise_unicode(value: Data, args: Args) -> str:
     return unicodedata.normalize(normal_form, to_text(value))
 
 
-@operation("Remove Diacritics", category="Text")
+@implementation("Remove Diacritics", category="Text")
 def remove_diacritics(value: Data, _args: Args) -> str:
     return "".join(
         character
@@ -194,7 +194,7 @@ def remove_diacritics(value: Data, _args: Args) -> str:
     )
 
 
-@operation("Remove whitespace", category="Text")
+@implementation("Remove whitespace", category="Text")
 def remove_whitespace(value: Data, args: Args) -> str:
     characters = ""
     for enabled, character in zip(
@@ -207,7 +207,7 @@ def remove_whitespace(value: Data, args: Args) -> str:
     return to_text(value).translate({ord(character): None for character in characters})
 
 
-@operation("Add line numbers", category="Text")
+@implementation("Add line numbers", category="Text")
 def add_line_numbers(value: Data, args: Args) -> str:
     offset = require_int(arg(args, 0, 0))
     lines = to_text(value).split("\n")
@@ -215,26 +215,26 @@ def add_line_numbers(value: Data, args: Args) -> str:
     return "\n".join(f"{index + offset:>{width}} {line}" for index, line in enumerate(lines, 1))
 
 
-@operation("Remove line numbers", category="Text")
+@implementation("Remove line numbers", category="Text")
 def remove_line_numbers(value: Data, _args: Args) -> str:
     return re.sub(r"^[ \t]{0,5}\d+[\s:|\-,.)\]]", "", to_text(value), flags=re.MULTILINE)
 
 
-@operation("Head", category="Text")
+@implementation("Head", category="Text")
 def head(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     number = require_int(arg(args, 1, 10))
     return delimiter.join(to_text(value).split(delimiter)[:number])
 
 
-@operation("Tail", category="Text")
+@implementation("Tail", category="Text")
 def tail(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     number = require_int(arg(args, 1, 10))
     return delimiter.join(to_text(value).split(delimiter)[-number:])
 
 
-@operation("Sort", category="Text")
+@implementation("Sort", category="Text")
 def sort_items(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     reverse_order = bool(arg(args, 1, False))
@@ -264,7 +264,7 @@ def _hex_sort_key(item: str) -> int:
     return int(item, 16)
 
 
-@operation("Unique", category="Text")
+@implementation("Unique", category="Text")
 def unique(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     items = to_text(value).split(delimiter)
@@ -274,14 +274,14 @@ def unique(value: Data, args: Args) -> str:
     return delimiter.join(dict.fromkeys(items))
 
 
-@operation("Split", category="Text")
+@implementation("Split", category="Text")
 def split(value: Data, args: Args) -> str:
     source = char_rep(arg(args, 0, "Comma"), ",")
     target = char_rep(arg(args, 1, "Line feed"), "\n")
     return target.join(to_text(value).split(source))
 
 
-@operation("Filter", category="Text")
+@implementation("Filter", category="Text")
 def filter_items(value: Data, args: Args) -> str:
     delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     pattern = re.compile(str(arg(args, 1, "")))
@@ -291,7 +291,7 @@ def filter_items(value: Data, args: Args) -> str:
     )
 
 
-@operation("Wrap", category="Text")
+@implementation("Wrap", category="Text")
 def wrap(value: Data, args: Args) -> str:
     width = require_int(arg(args, 0, 64), name="line width")
     if width < 1:
@@ -301,7 +301,7 @@ def wrap(value: Data, args: Args) -> str:
     )
 
 
-@operation("Pad lines", category="Text")
+@implementation("Pad lines", category="Text")
 def pad_lines(value: Data, args: Args) -> str:
     position = str(arg(args, 0, "Start"))
     length = require_int(arg(args, 1, 5))
@@ -325,7 +325,7 @@ def _toggle_pattern(value: object) -> tuple[str, str]:
     return pattern, mode
 
 
-@operation("Find / Replace", category="Text")
+@implementation("Find / Replace", category="Text")
 def find_replace(value: Data, args: Args) -> str:
     pattern, _ = _toggle_pattern(arg(args, 0, {"string": "", "option": "Simple string"}))
     replacement = _escaped(arg(args, 1, ""))
@@ -339,13 +339,13 @@ def find_replace(value: Data, args: Args) -> str:
     return re.sub(pattern, replacement, to_text(value), count=count, flags=flags)
 
 
-@operation("Count occurrences", category="Text")
+@implementation("Count occurrences", category="Text")
 def count_occurrences(value: Data, args: Args) -> str:
     pattern, _ = _toggle_pattern(arg(args, 0, {"string": "", "option": "Simple string"}))
     return str(len(re.findall(pattern, to_text(value))))
 
 
-@operation("Regular expression", category="Text")
+@implementation("Regular expression", category="Text")
 def regular_expression(value: Data, args: Args) -> str:
     pattern = str(arg(args, 1, ""))
     flags = (
@@ -371,7 +371,7 @@ def regular_expression(value: Data, args: Args) -> str:
     return f"Total found: {len(matches)}\n\n{output}" if display_total else output
 
 
-@operation("Strings", category="Extraction")
+@implementation("Strings", category="Extraction")
 def strings(value: Data, args: Args) -> str:
     encoding = str(arg(args, 0, "Single byte"))
     minimum = require_int(arg(args, 1, 4), name="minimum length")
@@ -399,7 +399,7 @@ def strings(value: Data, args: Args) -> str:
     return f"Total found: {len(found)}\n\n{output}" if bool(arg(args, 3, False)) else output
 
 
-@operation("Escape Unicode Characters", category="Text")
+@implementation("Escape Unicode Characters", category="Text")
 def escape_unicode(value: Data, args: Args) -> str:
     prefix = str(arg(args, 0, "\\u"))
     encode_all = bool(arg(args, 1, False))
@@ -415,14 +415,14 @@ def escape_unicode(value: Data, args: Args) -> str:
     return output
 
 
-@operation("Unescape Unicode Characters", category="Text")
+@implementation("Unescape Unicode Characters", category="Text")
 def unescape_unicode(value: Data, args: Args) -> str:
     prefix = str(arg(args, 0, "\\u"))
     pattern = re.escape(prefix) + r"([0-9a-fA-F]{4,8})"
     return re.sub(pattern, lambda match: chr(int(match.group(1), 16)), to_text(value))
 
 
-@operation("Escape string", category="Text")
+@implementation("Escape string", category="Text")
 def escape_string(value: Data, args: Args) -> str:
     level = str(arg(args, 0, "Special chars"))
     quote = {"Single": "'", "Double": '"', "Backtick": "`"}.get(str(arg(args, 1, "Single")), "'")
@@ -437,22 +437,22 @@ def escape_string(value: Data, args: Args) -> str:
     return escaped
 
 
-@operation("Unescape string", category="Text")
+@implementation("Unescape string", category="Text")
 def unescape_string(value: Data, _args: Args) -> str:
     return _escaped(to_text(value))
 
 
-@operation("Expand alphabet range", category="Text")
+@implementation("Expand alphabet range", category="Text")
 def expand_alphabet_range(value: Data, _args: Args) -> str:
     return expand_alphabet(to_text(value))
 
 
-@operation("Strip HTTP headers", category="Text")
+@implementation("Strip HTTP headers", category="Text")
 def strip_http_headers(value: Data, _args: Args) -> str:
     return re.split(r"\r?\n\r?\n", to_text(value), maxsplit=1)[-1]
 
 
-@operation("Dechunk HTTP response", category="Text")
+@implementation("Dechunk HTTP response", category="Text")
 def dechunk_http_response(value: Data, _args: Args) -> bytes:
     data = to_bytes(value)
     output = bytearray()
@@ -482,8 +482,8 @@ class _TextExtractor(HTMLParser):
             self.parts.append("\n")
 
 
-@operation("Strip HTML tags", category="Text")
-@operation("HTML To Text", category="Text")
+@implementation("Strip HTML tags", category="Text")
+@implementation("HTML To Text", category="Text")
 def html_to_text(value: Data, args: Args) -> str:
     parser = _TextExtractor()
     parser.feed(to_text(value))
@@ -495,7 +495,7 @@ def html_to_text(value: Data, args: Args) -> str:
     return output.strip()
 
 
-@operation("MIME Decoding", category="Text")
+@implementation("MIME Decoding", category="Text")
 def mime_decoding(value: Data, _args: Args) -> str:
     parts: list[str] = []
     for payload, charset in decode_header(to_text(value)):
@@ -512,13 +512,13 @@ def _sets(value: Data, args: Args) -> tuple[list[list[str]], str]:
     return samples, item_delimiter
 
 
-@operation("Set Union", category="Sets")
+@implementation("Set Union", category="Sets")
 def set_union(value: Data, args: Args) -> str:
     samples, delimiter = _sets(value, args)
     return delimiter.join(dict.fromkeys(chain.from_iterable(samples)))
 
 
-@operation("Set Intersection", category="Sets")
+@implementation("Set Intersection", category="Sets")
 def set_intersection(value: Data, args: Args) -> str:
     samples, delimiter = _sets(value, args)
     if not samples:
@@ -527,7 +527,7 @@ def set_intersection(value: Data, args: Args) -> str:
     return delimiter.join(item for item in samples[0] if item in intersection)
 
 
-@operation("Set Difference", category="Sets")
+@implementation("Set Difference", category="Sets")
 def set_difference(value: Data, args: Args) -> str:
     samples, delimiter = _sets(value, args)
     if not samples:
@@ -536,7 +536,7 @@ def set_difference(value: Data, args: Args) -> str:
     return delimiter.join(item for item in samples[0] if item in remainder)
 
 
-@operation("Symmetric Difference", category="Sets")
+@implementation("Symmetric Difference", category="Sets")
 def symmetric_difference(value: Data, args: Args) -> str:
     samples, delimiter = _sets(value, args)
     counts = Counter(chain.from_iterable(set(sample) for sample in samples))
@@ -545,7 +545,7 @@ def symmetric_difference(value: Data, args: Args) -> str:
     )
 
 
-@operation("Power Set", category="Sets")
+@implementation("Power Set", category="Sets")
 def power_set(value: Data, args: Args) -> str:
     delimiter = _escaped(arg(args, 0, ","))
     items = to_text(value).split(delimiter)
@@ -556,7 +556,7 @@ def power_set(value: Data, args: Args) -> str:
     )
 
 
-@operation("Cartesian Product", category="Sets")
+@implementation("Cartesian Product", category="Sets")
 def cartesian_product(value: Data, args: Args) -> str:
     samples, delimiter = _sets(value, args)
     return "\n".join(delimiter.join(selection) for selection in product(*samples))
