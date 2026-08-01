@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import difflib
 import html
+import json
 import random
 import re
 import secrets
 import time
-from collections import Counter
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
@@ -46,13 +48,15 @@ def get_all_casings(value: Data, _args: Args) -> str:
 
 
 @implementation("Generate De Bruijn Sequence", category="Generators")
-def de_bruijn(value: Data, args: Args) -> str:
+def de_bruijn(_value: Data, args: Args) -> str:
     alphabet_size = require_int(arg(args, 0, 2), name="alphabet size")
     subsequence_length = require_int(arg(args, 1, 3), name="key length")
-    alphabet = to_text(value) or "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    if not 1 <= alphabet_size <= len(alphabet) or subsequence_length < 1:
-        raise ValueError("invalid De Bruijn parameters")
-    symbols = alphabet[:alphabet_size]
+    if not 2 <= alphabet_size <= 9:
+        raise ValueError("alphabet size must be between 2 and 9")
+    if subsequence_length < 2:
+        raise ValueError("key length must be at least 2")
+    if alphabet_size**subsequence_length > 50_000:
+        raise ValueError("too many permutations; alphabet_size ** key_length must not exceed 50000")
     work = [0] * (alphabet_size * subsequence_length)
     sequence: list[int] = []
 
@@ -68,7 +72,7 @@ def de_bruijn(value: Data, args: Args) -> str:
             visit(order + 1, order)
 
     visit(1, 1)
-    return "".join(symbols[index] for index in sequence)
+    return "".join(map(str, sequence))
 
 
 _LOREM = (
@@ -82,6 +86,13 @@ _LOREM = (
 def lorem_ipsum(_value: Data, args: Args) -> str:
     length = require_int(arg(args, 0, 3), name="length")
     unit = str(arg(args, 1, "Paragraphs"))
+    if length < 1:
+        raise ValueError("length must be greater than 0")
+    if unit not in {"Paragraphs", "Sentences", "Words", "Bytes"}:
+        raise ValueError("length unit must be Paragraphs, Sentences, Words, or Bytes")
+    maximum = 1_000_000 if unit == "Bytes" else 100_000
+    if length > maximum:
+        raise ValueError(f"length must be less than {maximum}")
     if unit == "Bytes":
         return (_LOREM * ((length // len(_LOREM)) + 1)).encode()[:length].decode("latin-1")
     if unit == "Words":
@@ -103,9 +114,9 @@ def random_bytes(_value: Data, args: Args) -> Data:
     if output_format == "Hex":
         return data.hex()
     if output_format == "Integer":
-        return str(int.from_bytes(data, "big"))
+        return str(int.from_bytes(data, "little"))
     if output_format == "Byte array":
-        return " ".join(map(str, data))
+        return json.dumps(list(data), separators=(",", ":"))
     return data
 
 
@@ -114,15 +125,23 @@ def random_integers(_value: Data, args: Args) -> str:
     count = require_int(arg(args, 0, 1))
     minimum = require_int(arg(args, 1, 0))
     maximum = require_int(arg(args, 2, 99))
-    delimiter = char_rep(arg(args, 3, "Line feed"), "\n")
+    delimiter = char_rep(arg(args, 3, "Space"), " ")
     output_format = str(arg(args, 4, "Decimal"))
-    if count < 1 or count > 1_000_000 or minimum > maximum:
+    safe_limit = 2**53 - 1
+    if (
+        count < 1
+        or count > 1_000_000
+        or minimum > maximum
+        or not -safe_limit <= minimum <= safe_limit
+        or not -safe_limit <= maximum <= safe_limit
+        or maximum - minimum + 1 > safe_limit
+    ):
         raise ValueError("invalid random integer parameters")
     values = [secrets.randbelow(maximum - minimum + 1) + minimum for _ in range(count)]
     if output_format == "Hex":
         return delimiter.join(f"{value:x}" for value in values)
     if output_format == "Raw":
-        return bytes(value & 0xFF for value in values).decode("latin-1")
+        return "".join(chr(value % 65536) for value in values)
     return delimiter.join(map(str, values))
 
 
@@ -140,20 +159,20 @@ def shuffle(value: Data, args: Args) -> str:
 
 
 @implementation("Frequency distribution", category="Analysis")
-def frequency_distribution(value: Data, args: Args) -> str:
-    show_zero = bool(arg(args, 0, True))
-    show_ascii = bool(arg(args, 1, True))
-    counts = Counter(to_bytes(value))
-    total = sum(counts.values()) or 1
-    lines = ["Byte  Count  Percentage" + ("  ASCII" if show_ascii else "")]
-    for byte in range(256):
-        if not show_zero and not counts[byte]:
-            continue
-        line = f"{byte:02x}    {counts[byte]:5d}  {counts[byte] / total * 100:9.5f}%"
-        if show_ascii:
-            line += f"  {chr(byte) if 32 <= byte <= 126 else '.'}"
-        lines.append(line)
-    return "\n".join(lines)
+def frequency_distribution(value: Data, _args: Args) -> str:
+    data = to_bytes(value)
+    if not data:
+        raise ValueError("No data")
+    distribution = [0] * 256
+    for byte in data:
+        distribution[byte] += 1
+    result = {
+        "dataLength": len(data),
+        "percentages": [count / len(data) * 100 for count in distribution],
+        "distribution": distribution,
+        "bytesRepresented": sum(count > 0 for count in distribution),
+    }
+    return json.dumps(result, separators=(",", ":"))
 
 
 @implementation("Diff", category="Analysis")
@@ -174,9 +193,81 @@ def diff(value: Data, args: Args) -> str:
 
 @implementation("Fuzzy Match", category="Analysis")
 def fuzzy_match(value: Data, args: Args) -> str:
-    search = str(arg(args, 0, ""))
-    score = difflib.SequenceMatcher(None, search.casefold(), to_text(value).casefold()).ratio()
-    return str(round(score * 100))
+    text = to_text(value)
+    pattern = str(arg(args, 0, ""))
+    weights = tuple(float(arg(args, index, default)) for index, default in enumerate(
+        (15, 30, 30, 15, -5, -15, -1), start=1
+    ))
+    matches: list[list[int]] = []
+    start = 0
+    while pattern and start < len(text):
+        indexes = _best_fuzzy_indexes(pattern, text, start, weights)
+        if not indexes:
+            break
+        matches.append(indexes)
+        start = indexes[-1] + 1
+    if not matches:
+        return html.escape(text)
+
+    output: list[str] = []
+    position = 0
+    for match_index, indexes in enumerate(matches):
+        ranges: list[tuple[int, int]] = []
+        for index in indexes:
+            if ranges and index == ranges[-1][1]:
+                ranges[-1] = ranges[-1][0], index + 1
+            else:
+                ranges.append((index, index + 1))
+        for range_index, (range_start, range_end) in enumerate(ranges):
+            output.append(html.escape(text[position:range_start]))
+            if range_index == 0:
+                output.append(f'<span class="hl{1 + match_index % 2}">')
+            output.append(f"<b>{html.escape(text[range_start:range_end])}</b>")
+            position = range_end
+        output.append("</span>")
+    output.append(html.escape(text[position:]))
+    return "".join(output)
+
+
+def _best_fuzzy_indexes(
+    pattern: str, text: str, start: int, weights: tuple[float, ...]
+) -> list[int]:
+    sequential, separator, camel, first_letter, leading, max_leading, _unmatched = weights
+    folded_pattern = pattern.lower()
+    folded_text = text.lower()
+
+    def position_bonus(index: int) -> float:
+        if index == 0:
+            return first_letter
+        previous, current = text[index - 1], text[index]
+        bonus = separator if previous in {"_", " "} else 0
+        if previous != previous.upper() and current != current.lower():
+            bonus += camel
+        return bonus
+
+    scores: dict[int, tuple[float, list[int]]] = {}
+    for index in range(start, len(text)):
+        if folded_text[index] == folded_pattern[0]:
+            penalty = max(leading * index, max_leading)
+            scores[index] = penalty + position_bonus(index), [index]
+    for character in folded_pattern[1:]:
+        next_scores: dict[int, tuple[float, list[int]]] = {}
+        best_before: tuple[float, list[int]] | None = None
+        for index in range(start, len(text)):
+            previous = scores.get(index - 1)
+            if previous is not None and (best_before is None or previous[0] > best_before[0]):
+                best_before = previous
+            if folded_text[index] != character or best_before is None:
+                continue
+            best_score, best_indexes = best_before
+            adjacent = scores.get(index - 1)
+            if adjacent is not None and adjacent[0] + sequential > best_score:
+                best_score, best_indexes = adjacent[0] + sequential, adjacent[1]
+            next_scores[index] = best_score + position_bonus(index), [*best_indexes, index]
+        scores = next_scores
+        if not scores:
+            return []
+    return max(scores.values(), key=lambda result: result[0])[1] if scores else []
 
 
 @implementation("Extract dates", category="Extraction")
@@ -214,18 +305,58 @@ def escape_smart(value: Data, args: Args) -> str:
     replacements = {
         "\u201c": '"',
         "\u201d": '"',
+        "\u201e": '"',
+        "\u201f": '"',
+        "\u2033": '"',
         "\u2018": "'",
         "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u2032": "'",
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
         "\u2013": "-",
-        "\u2014": "-",
+        "\u2014": "--",
+        "\u2015": "--",
         "\u2026": "...",
+        "©": "(c)",
+        "®": "(r)",
+        "™": "(tm)",
+        "←": "<--",
+        "→": "-->",
+        "↑": "^",
+        "↓": "v",
+        "↔": "<->",
+        "⇐": "<==",
+        "⇒": "==>",
+        "⇔": "<=>",
+        "«": "<<",
+        "»": ">>",
+        "\u2039": "<",
+        "\u203a": ">",
+        "\u00d7": "x",
+        "÷": "/",
+        "±": "+/-",
+        "•": "*",
+        "·": ".",
+        "\u00a0": " ",
+        "\u2002": " ",
+        "\u2003": " ",
+        "\u2009": " ",
+        "\u200a": " ",
     }
-    output = "".join(replacements.get(character, character) for character in to_text(value))
-    if mode == "Remove":
-        return output.encode("ascii", "ignore").decode()
-    if mode == "Replace with '.'":
-        return output.encode("ascii", "replace").decode().replace("?", ".")
-    return output
+    output: list[str] = []
+    for character in to_text(value):
+        if ord(character) < 128 or character in replacements:
+            output.append(replacements.get(character, character))
+        elif mode == "Remove":
+            continue
+        elif mode == "Replace with '.'":
+            output.append(".")
+        else:
+            output.append(character)
+    return "".join(output)
 
 
 @implementation("Caret/M-decode", category="Encoding")
@@ -267,17 +398,218 @@ def substitute(value: Data, args: Args) -> str:
 @implementation("Template", category="Text")
 def template(value: Data, args: Args) -> str:
     definition = str(arg(args, 0, ""))
-    return definition.replace("{{this}}", to_text(value)).replace("{{{this}}}", to_text(value))
+    try:
+        context = json.loads(to_text(value))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON input: {exc.msg}") from exc
+    partials: dict[str, str] = {}
+    inline = re.compile(
+        r'(?m)^[ \t]*{{#\*inline\s+["\']([^"\']+)["\']}}[ \t]*\r?\n?'
+        r"(.*?)^[ \t]*{{/inline}}[ \t]*\r?\n?",
+        re.DOTALL,
+    )
+
+    def remember(match: re.Match[str]) -> str:
+        partials[match.group(1)] = match.group(2)
+        return ""
+
+    definition = inline.sub(remember, definition)
+    return _render_template(definition, context, context, partials, (), {})
+
+
+_TEMPLATE_TOKEN = re.compile(r"{{{.*?}}}|{{.*?}}", re.DOTALL)
+
+
+def _template_lookup(
+    path: str, context: Any, root: Any, parents: tuple[Any, ...], locals_: Mapping[str, Any]
+) -> Any:
+    path = path.strip()
+    if path in {"", ".", "this"}:
+        return context
+    if path.startswith("@root"):
+        context, path = root, path[5:].lstrip("./")
+    elif path.startswith("@"):
+        head, _, tail = path.partition(".")
+        context = locals_.get(head, "")
+        path = tail
+    else:
+        while path.startswith("../"):
+            context = parents[-1] if parents else root
+            parents = parents[:-1]
+            path = path[3:]
+        if path.startswith("this."):
+            path = path[5:]
+    for part in filter(None, re.split(r"[./]", path)):
+        if isinstance(context, Mapping):
+            context = context.get(part, "")
+        elif isinstance(context, Sequence) and not isinstance(context, (str, bytes, bytearray)):
+            try:
+                context = context[int(part)]
+            except (ValueError, IndexError):
+                return ""
+        else:
+            return ""
+    return context
+
+
+def _template_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"))
+    return str(value)
+
+
+def _template_escape(value: Any) -> str:
+    replacements = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#x27;",
+        "`": "&#x60;",
+        "=": "&#x3D;",
+    }
+    return "".join(replacements.get(character, character) for character in _template_text(value))
+
+
+def _template_block_end(template: str, start: int, name: str) -> tuple[int, int]:
+    depth = 1
+    for token in _TEMPLATE_TOKEN.finditer(template, start):
+        expression = token.group(0)[2:-2].strip()
+        if expression.startswith(f"#{name} ") or expression == f"#{name}":
+            depth += 1
+        elif expression == f"/{name}":
+            depth -= 1
+            if depth == 0:
+                return token.start(), token.end()
+    raise ValueError(f"unclosed template block: {name}")
+
+
+def _render_template(
+    definition: str,
+    context: Any,
+    root: Any,
+    partials: Mapping[str, str],
+    parents: tuple[Any, ...],
+    locals_: Mapping[str, Any],
+) -> str:
+    output: list[str] = []
+    position = 0
+    while match := _TEMPLATE_TOKEN.search(definition, position):
+        output.append(definition[position : match.start()])
+        token = match.group(0)
+        triple = token.startswith("{{{")
+        expression = token[3:-3].strip() if triple else token[2:-2].strip()
+        if expression.startswith("#"):
+            command, _, path = expression[1:].partition(" ")
+            if command not in {"each", "if", "unless"}:
+                raise ValueError(f"unsupported template block: {command}")
+            body_end, block_end = _template_block_end(definition, match.end(), command)
+            body = definition[match.end() : body_end]
+            if body.startswith("\r\n"):
+                body = body[2:]
+            elif body.startswith("\n"):
+                body = body[1:]
+            selected = _template_lookup(path, context, root, parents, locals_)
+            if command == "each" and isinstance(selected, Mapping):
+                items = list(selected.items())
+                for index, (key, item) in enumerate(items):
+                    block_locals = {
+                        "@index": index,
+                        "@key": key,
+                        "@first": index == 0,
+                        "@last": index == len(items) - 1,
+                    }
+                    output.append(
+                        _render_template(
+                            body, item, root, partials, (*parents, context), block_locals
+                        )
+                    )
+            elif (
+                command == "each"
+                and isinstance(selected, Sequence)
+                and not isinstance(selected, (str, bytes, bytearray))
+            ):
+                for index, item in enumerate(selected):
+                    block_locals = {
+                        "@index": index,
+                        "@first": index == 0,
+                        "@last": index == len(selected) - 1,
+                    }
+                    output.append(
+                        _render_template(
+                            body, item, root, partials, (*parents, context), block_locals
+                        )
+                    )
+            elif command in {"if", "unless"} and (bool(selected) == (command == "if")):
+                output.append(_render_template(body, context, root, partials, parents, locals_))
+            position = block_end
+            if definition[position : position + 2] == "\r\n":
+                position += 2
+            elif definition[position : position + 1] == "\n":
+                position += 1
+            continue
+        if expression.startswith("/"):
+            raise ValueError(f"unexpected template closing block: {expression}")
+        if expression.startswith("!"):
+            rendered = ""
+        elif expression.startswith(">"):
+            name = expression[1:].strip()
+            rendered = _render_template(
+                partials.get(name, ""), context, root, partials, parents, locals_
+            )
+        else:
+            selected = _template_lookup(expression, context, root, parents, locals_)
+            rendered = (
+                _template_text(selected)
+                if triple or expression.startswith("& ")
+                else _template_escape(selected)
+            )
+        output.append(rendered)
+        position = match.end()
+        if (
+            expression.startswith(">")
+            and not definition[definition.rfind("\n", 0, match.start()) + 1 : match.start()].strip()
+        ):
+            if definition[position : position + 2] == "\r\n":
+                position += 2
+            elif definition[position : position + 1] == "\n":
+                position += 1
+    output.append(definition[position:])
+    return "".join(output)
 
 
 @implementation("Offset checker", category="Analysis")
 def offset_checker(value: Data, args: Args) -> str:
-    delimiter = str(arg(args, 0, "\\n\\n")).replace("\\n", "\n")
-    left, separator, right = to_text(value).partition(delimiter)
-    if not separator:
-        raise ValueError("input does not contain the sample delimiter")
-    offsets = [index for index in range(min(len(left), len(right))) if left[index] != right[index]]
-    return "\n".join(map(str, offsets))
+    delimiter = str(arg(args, 0, "\\n\\n")).replace("\\r", "\r").replace("\\n", "\n")
+    samples = to_text(value).split(delimiter)
+    if len(samples) < 2:
+        raise ValueError("not enough samples; check the sample delimiter")
+    common = [
+        all(index < len(sample) and sample[index] == character for sample in samples[1:])
+        for index, character in enumerate(samples[0])
+    ]
+    rendered: list[str] = []
+    for sample in samples:
+        output: list[str] = []
+        in_match = False
+        for index, character in enumerate(sample):
+            is_match = index < len(common) and common[index]
+            if is_match and not in_match:
+                output.append("<span class='hl5'>")
+            elif not is_match and in_match:
+                output.append("</span>")
+            output.append(html.escape(character))
+            in_match = is_match
+        if in_match:
+            output.append("</span>")
+        rendered.append("".join(output))
+    return html.escape(delimiter).join(rendered)
 
 
 def _rows(value: Data, cell_delimiter: str, row_delimiter: str) -> list[list[str]]:
@@ -351,15 +683,131 @@ def css_beautify(value: Data, args: Args) -> str:
 
 
 @implementation("JavaScript Minify", category="Code")
-@implementation("SQL Minify", category="Code")
 def code_minify(value: Data, _args: Args) -> str:
     return _minify_code(value)
 
 
 @implementation("JavaScript Beautify", category="Code")
-@implementation("SQL Beautify", category="Code")
 def code_beautify(value: Data, args: Args) -> str:
     return _beautify_code(value, str(arg(args, 0, "\\t")).replace("\\t", "\t"))
+
+
+_SQL_TOKEN = re.compile(
+    r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|--[^\r\n]*|/\*.*?\*/|"
+    r":\w+|[A-Za-z_][\w$]*|\d+(?:\.\d+)?|<>|!=|<=|>=|:=|[(),;.*=+\-/]|[^\s]",
+    re.DOTALL,
+)
+_SQL_CLAUSES = (
+    ("ON", "DUPLICATE", "KEY", "UPDATE"),
+    ("INSERT", "INTO"),
+    ("GROUP", "BY"),
+    ("ORDER", "BY"),
+    ("UNION", "ALL"),
+    ("LEFT", "JOIN"),
+    ("RIGHT", "JOIN"),
+    ("INNER", "JOIN"),
+    ("OUTER", "JOIN"),
+    ("SELECT",),
+    ("FROM",),
+    ("WHERE",),
+    ("HAVING",),
+    ("LIMIT",),
+    ("VALUES",),
+    ("SET",),
+    ("JOIN",),
+)
+
+
+def _sql_tokens(value: Data) -> list[str]:
+    return [
+        token
+        for token in _SQL_TOKEN.findall(to_text(value))
+        if not token.startswith(("--", "/*"))
+    ]
+
+
+def _sql_clause(tokens: list[str], index: int) -> tuple[str, int] | None:
+    for clause in _SQL_CLAUSES:
+        if tuple(token.upper() for token in tokens[index : index + len(clause)]) == clause:
+            return " ".join(tokens[index : index + len(clause)]), len(clause)
+    return None
+
+
+def _append_sql_token(current: str, token: str) -> str:
+    if not current:
+        return token
+    if token in {",", ";", ")", "."} or current.endswith(("(", ".")):
+        return current + token
+    if token == "(" and (current[-1].isalnum() or current[-1] in {"_", "$"}):
+        return current + token
+    return current + " " + token
+
+
+@implementation("SQL Minify", category="Code")
+def sql_minify(value: Data, _args: Args) -> str:
+    current = ""
+    for token in _sql_tokens(value):
+        current = _append_sql_token(current, token)
+    return current
+
+
+@implementation("SQL Beautify", category="Code")
+def sql_beautify(value: Data, args: Args) -> str:
+    indent = str(arg(args, 0, "\\t")).replace("\\t", "\t") or "    "
+    tokens = _sql_tokens(value)
+    lines: list[tuple[int, str]] = []
+    current = ""
+    current_indent = 0
+    level = 0
+    content_indent = 0
+    list_mode = False
+    parentheses: list[tuple[int, int]] = []
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            lines.append((current_indent, current))
+            current = ""
+
+    index = 0
+    while index < len(tokens):
+        clause = _sql_clause(tokens, index)
+        if clause:
+            text, consumed = clause
+            flush()
+            lines.append((level, text))
+            current_indent = level + 1
+            content_indent = current_indent
+            list_mode = text.upper() in {"SELECT", "ON DUPLICATE KEY UPDATE", "SET"}
+            index += consumed
+            continue
+        token = tokens[index]
+        if token == "(" and _sql_clause(tokens, index + 1) == (tokens[index + 1], 1):
+            current = _append_sql_token(current, token)
+            paren_indent = current_indent
+            flush()
+            parentheses.append((level, paren_indent))
+            level = paren_indent + 1
+            current_indent = level
+            index += 1
+            continue
+        if token == ")" and parentheses:
+            flush()
+            level, current_indent = parentheses.pop()
+            current = ")"
+            list_mode = False
+            index += 1
+            continue
+        if token == "," and list_mode:
+            current = _append_sql_token(current, token)
+            flush()
+            current_indent = content_indent
+            index += 1
+            continue
+        current = _append_sql_token(current, token)
+        index += 1
+    flush()
+    return "\n".join(indent * line_indent + line for line_indent, line in lines)
 
 
 @implementation("Generic Code Beautify", category="Code")

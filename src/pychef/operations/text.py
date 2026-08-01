@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import codecs
 import html
 import ipaddress
 import re
@@ -21,12 +20,64 @@ from ._utils import arg, char_rep, expand_alphabet, require_int
 
 def _escaped(value: object) -> str:
     text = str(value)
-    if "\\" not in text:
-        return text
-    try:
-        return codecs.decode(text, "unicode_escape")
-    except UnicodeDecodeError:
-        return text
+    output: list[str] = []
+    index = 0
+    simple = {
+        "a": "\a",
+        "b": "\b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "v": "\v",
+        "'": "'",
+        '"': '"',
+        "\\": "\\",
+    }
+    while index < len(text):
+        if text[index] != "\\" or index + 1 >= len(text):
+            output.append(text[index])
+            index += 1
+            continue
+        marker = text[index + 1]
+        if marker in simple:
+            output.append(simple[marker])
+            index += 2
+        elif marker == "x" and re.fullmatch(r"[0-9a-fA-F]{2}", text[index + 2 : index + 4]):
+            output.append(chr(int(text[index + 2 : index + 4], 16)))
+            index += 4
+        elif marker == "u" and index + 2 < len(text) and text[index + 2] == "{":
+            closing = text.find("}", index + 3)
+            digits = text[index + 3 : closing] if closing >= 0 else ""
+            if closing >= 0 and re.fullmatch(r"[0-9a-fA-F]{1,6}", digits):
+                ordinal = int(digits, 16)
+                if ordinal <= 0x10FFFF:
+                    output.append(chr(ordinal))
+                    index = closing + 1
+                    continue
+            output.append("\\")
+            index += 1
+        elif marker == "u" and re.fullmatch(r"[0-9a-fA-F]{4}", text[index + 2 : index + 6]):
+            ordinal = int(text[index + 2 : index + 6], 16)
+            if 0xD800 <= ordinal <= 0xDBFF and re.fullmatch(
+                r"\\u[0-9a-fA-F]{4}", text[index + 6 : index + 12]
+            ):
+                low = int(text[index + 8 : index + 12], 16)
+                if 0xDC00 <= low <= 0xDFFF:
+                    output.append(chr(0x10000 + ((ordinal - 0xD800) << 10) + low - 0xDC00))
+                    index += 12
+                    continue
+            output.append(chr(ordinal))
+            index += 6
+        elif marker in "01234567":
+            match = re.match(r"[0-7]{1,3}", text[index + 1 :])
+            assert match is not None
+            output.append(chr(int(match.group(0), 8)))
+            index += 1 + len(match.group(0))
+        else:
+            output.append(marker)
+            index += 2
+    return "".join(output)
 
 
 @implementation("Reverse", category="Data format")
@@ -426,15 +477,37 @@ def unescape_unicode(value: Data, args: Args) -> str:
 def escape_string(value: Data, args: Args) -> str:
     level = str(arg(args, 0, "Special chars"))
     quote = {"Single": "'", "Double": '"', "Backtick": "`"}.get(str(arg(args, 1, "Single")), "'")
-    text = to_text(value)
-    escaped = text.encode("unicode_escape").decode("ascii")
-    escaped = escaped.replace(quote, "\\" + quote)
-    if level == "Everything":
-        escaped = "".join(
-            character if character.startswith("\\") else f"\\x{ord(character):02x}"
-            for character in escaped
-        )
-    return escaped
+    json_compatible = bool(arg(args, 2, False))
+    es6_compatible = bool(arg(args, 3, True))
+    uppercase = bool(arg(args, 4, False))
+    hexadecimal = "X" if uppercase else "x"
+    output: list[str] = []
+    specials = {0: r"\0", 8: r"\b", 9: r"\t", 10: r"\n", 12: r"\f", 13: r"\r"}
+    for character in to_text(value):
+        ordinal = ord(character)
+        if character == "\\" or character == quote or (json_compatible and character == '"'):
+            output.append("\\" + character)
+        elif ordinal in specials:
+            output.append(specials[ordinal])
+        elif ordinal < 32 or ordinal == 127:
+            template = f"\\u{{:04{hexadecimal}}}" if json_compatible else f"\\x{{:02{hexadecimal}}}"
+            output.append(template.format(ordinal))
+        elif level == "Minimal":
+            output.append(character)
+        elif level == "Everything" or ordinal > 126:
+            if ordinal <= 0xFF and not json_compatible:
+                output.append(f"\\x{ordinal:02{hexadecimal}}")
+            elif ordinal <= 0xFFFF:
+                output.append(f"\\u{ordinal:04{hexadecimal}}")
+            elif es6_compatible and not json_compatible:
+                output.append(f"\\u{{{ordinal:{hexadecimal}}}}")
+            else:
+                adjusted = ordinal - 0x10000
+                high, low = 0xD800 + (adjusted >> 10), 0xDC00 + (adjusted & 0x3FF)
+                output.append(f"\\u{high:04{hexadecimal}}\\u{low:04{hexadecimal}}")
+        else:
+            output.append(character)
+    return "".join(output)
 
 
 @implementation("Unescape string", category="Text")

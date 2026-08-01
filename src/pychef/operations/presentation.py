@@ -14,21 +14,31 @@ from ..types import Args, Data, to_bytes, to_text
 from ._utils import arg, char_rep, require_int
 
 
-def _rows(value: Data, args: Args) -> tuple[list[str], list[list[float]]]:
+def _chart_rows(
+    value: Data, args: Args, *, columns: int, headers_index: int | None
+) -> tuple[list[str], list[list[str]]]:
     record_delimiter = char_rep(arg(args, 0, "Line feed"), "\n")
     field_delimiter = char_rep(arg(args, 1, "Comma"), ",")
-    records = to_text(value).split(record_delimiter)
+    text = to_text(value)
+    if not text:
+        return [], []
+    records = text.split(record_delimiter)
     parsed = list(csv.reader(records, delimiter=field_delimiter))
     headers: list[str] = []
-    if bool(arg(args, 2, True)) and parsed:
+    if headers_index is not None and bool(arg(args, headers_index, True)) and parsed:
         headers = parsed.pop(0)
-    numeric: list[list[float]] = []
-    for row in parsed:
-        try:
-            numeric.append([float(field.strip()) for field in row if field.strip()])
-        except ValueError:
-            continue
-    return headers, numeric
+    if headers and len(headers) != columns:
+        raise ValueError(f"each chart row must have exactly {columns} fields")
+    if any(len(row) != columns for row in parsed):
+        raise ValueError(f"each chart row must have exactly {columns} fields")
+    return headers, [[field.strip() for field in row] for row in parsed]
+
+
+def _number(value: str) -> float:
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise ValueError("chart values must be base-10 numbers") from exc
 
 
 def _bounds(points: Iterable[tuple[float, float]]) -> tuple[float, float, float, float]:
@@ -69,64 +79,71 @@ def _project(
 
 @implementation("Scatter chart", category="Visualisation")
 def scatter_chart(value: Data, args: Args) -> Data:
-    headers, rows = _rows(value, args)
-    points = [(row[0], row[1]) for row in rows if len(row) >= 2]
+    use_input_colours = bool(arg(args, 7, False))
+    headers, rows = _chart_rows(
+        value, args, columns=3 if use_input_colours else 2, headers_index=2
+    )
+    points = [(_number(row[0]), _number(row[1])) for row in rows]
     bounds = _bounds(points)
-    colour = html.escape(str(arg(args, 6, "mediumseagreen")), quote=True)
-    radius = max(0.5, min(100.0, float(arg(args, 7, 10))))
+    colour = html.escape(str(arg(args, 5, "black")), quote=True)
+    radius = max(0.0, min(100.0, float(arg(args, 6, 10))))
     svg = _svg_start(
         "Scatter chart",
-        str(arg(args, 3, headers[0] if headers else "X")),
-        str(arg(args, 4, headers[1] if len(headers) > 1 else "Y")),
+        headers[0] if headers else str(arg(args, 3, "")),
+        headers[1] if headers else str(arg(args, 4, "")),
     )
     for index, point in enumerate(points):
         x, y = _project(point, bounds)
-        point_colour = colour
-        if bool(arg(args, 8, False)) and len(rows[index]) >= 3:
-            shade = max(0, min(255, round(rows[index][2])))
-            point_colour = f"rgb({shade},80,{255 - shade})"
+        point_colour = html.escape(rows[index][2], quote=True) if use_input_colours else colour
         svg += (
             f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{radius:.2f}" '
-            f'fill="{point_colour}" fill-opacity=".75"/>'
+            f'fill="{point_colour}" fill-opacity=".75" stroke="rgba(0,0,0,.5)"/>'
         )
     return svg + "</svg>"
 
 
 @implementation("Series chart", category="Visualisation")
 def series_chart(value: Data, args: Args) -> Data:
-    headers, rows = _rows(value, args)
+    _, rows = _chart_rows(value, args, columns=3, headers_index=None)
     if not rows:
-        return _svg_start("Series chart", "X", "Y") + "</svg>"
-    series_count = max(len(row) for row in rows) - 1
-    all_points = [(row[0], item) for row in rows for item in row[1:]]
+        return _svg_start("Series chart", str(arg(args, 2, "")), "Value") + "</svg>"
+    x_values = list(dict.fromkeys(row[1] for row in rows))
+    x_positions = {label: float(index) for index, label in enumerate(x_values)}
+    grouped: dict[str, list[tuple[float, float]]] = {}
+    for series_name, x_label, number in rows:
+        grouped.setdefault(series_name, []).append((x_positions[x_label], _number(number)))
+    all_points = [point for points in grouped.values() for point in points]
     bounds = _bounds(all_points)
     colours = [
         item.strip()
         for item in str(arg(args, 4, "mediumseagreen, dodgerblue, tomato")).split(",")
         if item.strip()
     ]
-    svg = _svg_start("Series chart", str(arg(args, 2, headers[0] if headers else "X")), "Value")
-    for series in range(series_count):
-        points = [(row[0], row[series + 1]) for row in rows if len(row) > series + 1]
+    radius = max(0.0, min(100.0, float(arg(args, 3, 1))))
+    svg = _svg_start("Series chart", str(arg(args, 2, "")), "Value")
+    for series_index, (series_name, points) in enumerate(grouped.items()):
+        points.sort()
         projected = [_project(point, bounds) for point in points]
-        colour = html.escape(colours[series % len(colours)] if colours else "black", quote=True)
+        colour = html.escape(
+            colours[series_index % len(colours)] if colours else "black", quote=True
+        )
         path = " ".join(
             ("M" if index == 0 else "L") + f"{x:.2f},{y:.2f}"
             for index, (x, y) in enumerate(projected)
         )
         svg += f'<path d="{path}" fill="none" stroke="{colour}" stroke-width="2"/>'
+        svg += "".join(
+            f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{radius:.2f}" fill="{colour}"/>'
+            for x, y in projected
+        )
+        svg += f'<text x="65" y="{40 + series_index * 18}">{html.escape(series_name)}</text>'
     return svg + "</svg>"
-
-
-def _colour(value: float, maximum: float) -> str:
-    ratio = 0 if maximum <= 0 else max(0.0, min(1.0, value / maximum))
-    return f"rgb({round(255 * ratio)},{round(90 + 100 * (1 - ratio))},{round(255 * (1 - ratio))})"
 
 
 @implementation("Heatmap chart", category="Visualisation")
 def heatmap_chart(value: Data, args: Args) -> Data:
-    _, rows = _rows(value, args)
-    points = [(row[0], row[1]) for row in rows if len(row) >= 2]
+    headers, rows = _chart_rows(value, args, columns=2, headers_index=4)
+    points = [(_number(row[0]), _number(row[1])) for row in rows]
     vertical = max(1, min(200, require_int(arg(args, 2, 25), name="vertical bins")))
     horizontal = max(1, min(200, require_int(arg(args, 3, 25), name="horizontal bins")))
     bounds = _bounds(points)
@@ -137,39 +154,66 @@ def heatmap_chart(value: Data, args: Args) -> Data:
         row = min(vertical - 1, max(0, int((450 - y) / 420 * vertical)))
         bins[row][column] += 1
     maximum = max((amount for row in bins for amount in row), default=1)
-    svg = _svg_start("Heatmap", str(arg(args, 5, "X")), str(arg(args, 6, "Y")))
+    svg = _svg_start(
+        "Heatmap",
+        headers[0] if headers else str(arg(args, 5, "")),
+        headers[1] if headers else str(arg(args, 6, "")),
+    )
+    draw_edges = bool(arg(args, 7, False))
+    minimum_colour = html.escape(str(arg(args, 8, "white")), quote=True)
+    maximum_colour = html.escape(str(arg(args, 9, "black")), quote=True)
     for row in range(vertical):
         for column in range(horizontal):
+            amount = bins[row][column]
+            fill = minimum_colour if not amount else maximum_colour
+            opacity = 1 if not amount else max(0.05, amount / maximum)
             svg += (
                 f'<rect x="{60 + column * 720 / horizontal:.2f}" '
                 f'y="{30 + row * 420 / vertical:.2f}" width="{720 / horizontal:.2f}" '
-                f'height="{420 / vertical:.2f}" fill="{_colour(bins[row][column], maximum)}"/>'
+                f'height="{420 / vertical:.2f}" fill="{fill}" fill-opacity="{opacity:.4f}" '
+                f'stroke="{"rgba(0,0,0,.5)" if draw_edges else "none"}"/>'
             )
     return svg + "</svg>"
 
 
 @implementation("Hex Density chart", category="Visualisation")
 def hex_density_chart(value: Data, args: Args) -> Data:
-    _, rows = _rows(value, args)
-    points = [(row[0], row[1]) for row in rows if len(row) >= 2]
+    headers, rows = _chart_rows(value, args, columns=2, headers_index=4)
+    points = [(_number(row[0]), _number(row[1])) for row in rows]
     bounds = _bounds(points)
-    radius = max(2.0, min(100.0, float(arg(args, 3, 15))))
+    pack_radius = max(1.0, min(100.0, float(arg(args, 2, 25))))
+    draw_radius = max(1.0, min(100.0, float(arg(args, 3, 15))))
     buckets: dict[tuple[int, int], int] = {}
     for point in points:
         x, y = _project(point, bounds)
-        bucket = round(x / (radius * 1.5)), round(y / (radius * math.sqrt(3)))
+        bucket = (
+            round(x / (pack_radius * 1.5)),
+            round(y / (pack_radius * math.sqrt(3))),
+        )
         buckets[bucket] = buckets.get(bucket, 0) + 1
     maximum = max(buckets.values(), default=1)
-    svg = _svg_start("Hex density", str(arg(args, 5, "X")), str(arg(args, 6, "Y")))
+    svg = _svg_start(
+        "Hex density",
+        headers[0] if headers else str(arg(args, 5, "")),
+        headers[1] if headers else str(arg(args, 6, "")),
+    )
+    draw_edges = bool(arg(args, 7, False))
+    minimum_colour = html.escape(str(arg(args, 8, "white")), quote=True)
+    maximum_colour = html.escape(str(arg(args, 9, "black")), quote=True)
     for (column, row), amount in buckets.items():
-        center_x = column * radius * 1.5
-        center_y = row * radius * math.sqrt(3)
+        center_x = column * pack_radius * 1.5
+        center_y = row * pack_radius * math.sqrt(3)
         points_text = " ".join(
-            f"{center_x + radius * math.cos(math.radians(60 * index)):.2f},"
-            f"{center_y + radius * math.sin(math.radians(60 * index)):.2f}"
+            f"{center_x + draw_radius * math.cos(math.radians(60 * index)):.2f},"
+            f"{center_y + draw_radius * math.sin(math.radians(60 * index)):.2f}"
             for index in range(6)
         )
-        svg += f'<polygon points="{points_text}" fill="{_colour(amount, maximum)}"/>'
+        opacity = max(0.05, amount / maximum)
+        svg += (
+            f'<polygon points="{points_text}" fill="{maximum_colour}" '
+            f'fill-opacity="{opacity:.4f}" '
+            f'stroke="{"black" if draw_edges else "none"}" data-min-colour="{minimum_colour}"/>'
+        )
     return svg + "</svg>"
 
 

@@ -39,6 +39,10 @@ LIMITATIONS = {
     ),
     "AMF Decode": "AMF3 externalizable values are not fully interoperable.",
     "AMF Encode": "AMF3 externalizable values are not fully interoperable.",
+    "Template": (
+        "The pure-Python renderer supports variables, raw variables, each/if/unless blocks, "
+        "parent and root paths, and inline partials; arbitrary Handlebars helpers are not available."
+    ),
 }
 
 CURATED_EXAMPLES: dict[str, tuple[str, list[Any], str]] = {

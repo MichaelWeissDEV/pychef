@@ -18,29 +18,65 @@ def run(name: str, value: str | bytes, args: Sequence[Any] | None = None) -> Any
     return registry.get(name).run(value, args or [])
 
 
-@pytest.mark.parametrize(
-    "name", ["Scatter chart", "Series chart", "Heatmap chart", "Hex Density chart"]
-)
-def test_chart_operations_emit_standalone_svg(name: str) -> None:
-    svg = run(name, "x,y,z\n1,2,10\n2,4,20\n3,1,30")
+@pytest.mark.parametrize("name", ["Scatter chart", "Heatmap chart", "Hex Density chart"])
+def test_point_chart_operations_emit_standalone_svg(name: str) -> None:
+    svg = run(name, "x,y\n1,2\n2,4\n3,1")
     assert svg.startswith("<svg") and svg.endswith("</svg>")
     assert "<title>" in svg
+
+
+def test_series_chart_uses_official_three_column_records() -> None:
+    svg = run("Series chart", "alpha,one,1\nalpha,two,2\nbeta,one,3")
+    assert svg.startswith("<svg") and svg.endswith("</svg>")
+    assert "alpha" in svg and "beta" in svg
+    assert svg.count("<circle") == 3
 
 
 def test_chart_options_and_empty_data() -> None:
     scatter = run(
         "Scatter chart",
-        "1;2;10\n2;3;200",
-        ["Line feed", "Semi-colon", False, "Time", "Value", "", "red", 3, True],
+        "1;2;red\n2;3;blue",
+        ["Line feed", "Semi-colon", False, "Time", "Value", "black", 3, True],
     )
-    assert "rgb(" in scatter and 'r="3.00"' in scatter
+    assert 'fill="red"' in scatter and 'r="3.00"' in scatter
     series = run(
         "Series chart",
-        "x,a,b\n1,2,3\n2,3,4",
-        ["Line feed", "Comma", True, "X axis", 2, "red, blue"],
+        "a,one,2\na,two,3\nb,one,3\nb,two,4",
+        ["Line feed", "Comma", "X axis", 2, "red, blue"],
     )
     assert series.count("<path") >= 3
-    assert run("Series chart", "x,y\n", []).endswith("</svg>")
+    assert 'r="2.00"' in series
+    assert run("Series chart", "", []).endswith("</svg>")
+
+
+def test_chart_headers_option_indexes_and_validation() -> None:
+    heatmap = run(
+        "Heatmap chart",
+        "Horizontal,Vertical\n1,2\n2,3",
+        ["Line feed", "Comma", 4, 5, True, "ignored-x", "ignored-y", True, "white", "red"],
+    )
+    assert "Horizontal" in heatmap and "Vertical" in heatmap
+    assert 'stroke="rgba(0,0,0,.5)"' in heatmap
+    density = run(
+        "Hex Density chart",
+        "x,y\n1,2\n2,3",
+        ["Line feed", "Comma", 20, 7, True, "", "", True, "white", "blue", False],
+    )
+    assert 'stroke="black"' in density and "x" in density and "y" in density
+    with pytest.raises(ValueError, match="exactly 2"):
+        run("Heatmap chart", "1,2,3", ["Line feed", "Comma", 2, 2, False])
+    with pytest.raises(ValueError, match="base-10"):
+        run("Scatter chart", "not-a-number,2", ["Line feed", "Comma", False])
+
+
+def test_chart_user_controlled_text_is_html_escaped() -> None:
+    svg = run(
+        "Scatter chart",
+        '1,2,\"red\\\" onload=\\\"alert(1)\"',
+        ["Line feed", "Comma", False, "<x>", "<y>", "black", 1, True],
+    )
+    assert "<x>" not in svg and "&lt;x&gt;" in svg
+    assert 'onload="alert' not in svg
 
 
 def test_render_markdown_features_are_escaped() -> None:

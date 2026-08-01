@@ -108,6 +108,20 @@ def test_find_regex_strings_and_escaping() -> None:
     assert bake("a-c0-2", ["Expand alphabet range"]) == "abc012"
 
 
+def test_escape_and_unescape_string_official_vectors() -> None:
+    recipe = [{"op": "Escape string", "args": ["Special chars", "Single", False, True, False]}]
+    assert bake("Escape 'these' quotes.", recipe) == "Escape \\'these\\' quotes."
+    plain = "null\0backspace\btab\tnewline\nverticaltab\vformfeed\fcarriagereturn\r©♥𝌆"
+    escaped = bake(plain, recipe)
+    assert escaped == (
+        r"null\0backspace\btab\tnewline\nverticaltab\x0bformfeed\fcarriagereturn\r"
+        r"\xa9\u2665\u{1d306}"
+    )
+    assert bake(escaped, ["Unescape string"]) == plain
+    assert bake(r"\0\01\012\1\12", ["Unescape string"]) == "\0\1\n\1\n"
+    assert bake(r"\u0061\u{0062}", ["Unescape string"]) == "ab"
+
+
 def test_html_mime_http_and_sets() -> None:
     assert bake("<p>Hello <b>world</b></p>", ["HTML To Text"]) == "Hello world"
     assert bake("HTTP/1.1 200 OK\r\nX: y\r\n\r\nbody", ["Strip HTTP headers"]) == "body"

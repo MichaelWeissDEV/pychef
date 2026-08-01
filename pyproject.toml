@@ -33,6 +33,7 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/MichaelWeissDEV/pychef"
+Documentation = "https://cyberchef-py.readthedocs.io/en/latest/"
 Source = "https://github.com/MichaelWeissDEV/pychef"
 Issues = "https://github.com/MichaelWeissDEV/pychef/issues"
 Changelog = "https://github.com/MichaelWeissDEV/pychef/blob/main/CHANGELOG.md"

@@ -1,5 +1,7 @@
 # PyChef
 
+[![Documentation Status](https://readthedocs.org/projects/cyberchef-py/badge/?version=latest)](https://cyberchef-py.readthedocs.io/en/latest/?badge=latest)
+
 PyChef is an unofficial, dependency-free, pure-Python implementation of CyberChef's recipe
 model and data-transformation operations. It is intended for scripts, tests,
 services, and offline tooling that must not require Node.js or JavaScript at
@@ -33,8 +35,9 @@ uv run python examples/quickstart.py
 
 The Sphinx documentation includes beginner guides, recipes, pipelines, CTF and
 packet tooling, the public Python API, compatibility boundaries, and a separate
-reference page for every registered operation. Its source is in
-[docs](docs/index.rst).
+reference page for every registered operation. Read it at
+[cyberchef-py.readthedocs.io](https://cyberchef-py.readthedocs.io/en/latest/);
+its source is in [docs](docs/index.rst).
 
 Build the same strict HTML documentation used by Read the Docs and CI:
 
