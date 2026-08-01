@@ -80,9 +80,7 @@ def _project(
 @implementation("Scatter chart", category="Visualisation")
 def scatter_chart(value: Data, args: Args) -> Data:
     use_input_colours = bool(arg(args, 7, False))
-    headers, rows = _chart_rows(
-        value, args, columns=3 if use_input_colours else 2, headers_index=2
-    )
+    headers, rows = _chart_rows(value, args, columns=3 if use_input_colours else 2, headers_index=2)
     points = [(_number(row[0]), _number(row[1])) for row in rows]
     bounds = _bounds(points)
     colour = html.escape(str(arg(args, 5, "black")), quote=True)

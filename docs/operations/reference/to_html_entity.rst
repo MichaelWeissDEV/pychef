@@ -41,7 +41,7 @@ Arguments are positional. Keep their order when using ``bake()`` or
    * - ``0``
      - Convert all characters
      - ``boolean``
-     - ``True``
+     - ``False``
      - ``True`` or ``False``
    * - ``1``
      - Convert to
@@ -62,7 +62,7 @@ Recipe template
    from pychef import bake
 
    input_value = "example"
-   args = [True, 'Named entities']
+   args = [False, 'Named entities']
    result = bake(input_value, [{"op": 'To HTML Entity', "args": args}])
    print(result)
 
@@ -73,7 +73,7 @@ Pipeline example
 
    from pychef import Pipeline
 
-   args = [True, 'Named entities']
+   args = [False, 'Named entities']
    transform = Pipeline().then('To HTML Entity', *args)
    result = transform("example")
 
@@ -88,6 +88,6 @@ receive the input value and a positional argument tuple:
 
    from pychef.operations.by_operation.to_html_entity import run
 
-   result = run("example", tuple([True, 'Named entities']))
+   result = run("example", tuple([False, 'Named entities']))
 
 .. autofunction:: pychef.operations.by_operation.to_html_entity.run

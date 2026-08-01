@@ -58,7 +58,7 @@ Arguments are positional. Keep their order when using ``bake()`` or
    * - ``3``
      - Delimiter
      - ``option``
-     - ``'Line feed'``
+     - ``'Space'``
      - ``'Space'``, ``'Comma'``, ``'Semi-colon'``, ``'Colon'``, ``'Line feed'``, ``'CRLF'``
    * - ``4``
      - Output
@@ -79,7 +79,7 @@ Recipe template
    from pychef import bake
 
    input_value = "example"
-   args = [1, 0, 99, 'Line feed', 'Decimal']
+   args = [1, 0, 99, 'Space', 'Decimal']
    result = bake(input_value, [{"op": 'Pseudo-Random Integer Generator', "args": args}])
    print(result)
 
@@ -90,7 +90,7 @@ Pipeline example
 
    from pychef import Pipeline
 
-   args = [1, 0, 99, 'Line feed', 'Decimal']
+   args = [1, 0, 99, 'Space', 'Decimal']
    transform = Pipeline().then('Pseudo-Random Integer Generator', *args)
    result = transform("example")
 
@@ -105,6 +105,6 @@ receive the input value and a positional argument tuple:
 
    from pychef.operations.by_operation.pseudo_random_integer_generator import run
 
-   result = run("example", tuple([1, 0, 99, 'Line feed', 'Decimal']))
+   result = run("example", tuple([1, 0, 99, 'Space', 'Decimal']))
 
 .. autofunction:: pychef.operations.by_operation.pseudo_random_integer_generator.run

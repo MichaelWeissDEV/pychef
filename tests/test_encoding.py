@@ -40,9 +40,7 @@ def test_base_round_trips(operation: str) -> None:
 
 
 def test_base85_official_variants_and_options() -> None:
-    assert bake(b"hello world", [{"op": "To Base85", "args": ["!-u", False]}]) == (
-        "BOu!rD]j7BEbo7"
-    )
+    assert bake(b"hello world", [{"op": "To Base85", "args": ["!-u", False]}]) == ("BOu!rD]j7BEbo7")
     assert bake("BOu!rD]j7BEbo7\n", [{"op": "From Base85", "args": ["!-u", True, "z"]}]) == (
         b"hello world"
     )
@@ -51,10 +49,9 @@ def test_base85_official_variants_and_options() -> None:
         "HelloWorld"
     )
     ipv6 = bytes.fromhex("108000000000000000080800200c417a")
-    assert bake(ipv6, [{"op": "To Base85", "args": ["IPv6", False]}]) == (
-        "5P$#x0000000;;GAPhlz"
-    )
+    assert bake(ipv6, [{"op": "To Base85", "args": ["IPv6", False]}]) == ("5P$#x0000000;;GAPhlz")
     delimited = bake(b"test", [{"op": "To Base85", "args": ["!-u", True]}])
+    assert isinstance(delimited, str)
     assert delimited.startswith("<~") and delimited.endswith("~>")
     assert bake(delimited, [{"op": "From Base85", "args": ["!-u", True, "z"]}]) == b"test"
 
@@ -157,7 +154,13 @@ def test_float_modhex_and_general_base_round_trips() -> None:
 
 @pytest.mark.parametrize(
     ("encoded", "radix", "decimal"),
-    [("1010", 2, "10"), ("10.1", 2, "2.5"), ("a.8", 16, "10.5"), ("77", 8, "63"), ("7.4", 8, "7.5")],
+    [
+        ("1010", 2, "10"),
+        ("10.1", 2, "2.5"),
+        ("a.8", 16, "10.5"),
+        ("77", 8, "63"),
+        ("7.4", 8, "7.5"),
+    ],
 )
 def test_from_base_official_vectors(encoded: str, radix: int, decimal: str) -> None:
     assert bake(encoded, [{"op": "From Base", "args": [radix]}]) == decimal

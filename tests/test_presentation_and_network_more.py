@@ -72,7 +72,7 @@ def test_chart_headers_option_indexes_and_validation() -> None:
 def test_chart_user_controlled_text_is_html_escaped() -> None:
     svg = run(
         "Scatter chart",
-        '1,2,\"red\\\" onload=\\\"alert(1)\"',
+        '1,2,"red\\" onload=\\"alert(1)"',
         ["Line feed", "Comma", False, "<x>", "<y>", "black", 1, True],
     )
     assert "<x>" not in svg and "&lt;x&gt;" in svg

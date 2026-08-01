@@ -462,12 +462,16 @@ def derive_hkdf(value: Data, args: Args) -> str:
 
 
 @implementation("Derive EVP key", category="KDF")
-def derive_evp(value: Data, args: Args) -> str:
+def derive_evp(_value: Data, args: Args) -> str:
     passphrase = _toggle_bytes(arg(args, 0, {"string": "", "option": "UTF8"}))
     key_bits = require_int(arg(args, 1, 128))
     iterations = require_int(arg(args, 2, 1))
     algorithm = str(arg(args, 3, "MD5")).lower()
-    salt = _toggle_bytes(arg(args, 4, {"string": "", "option": "Hex"})) or to_bytes(value)
+    salt = _toggle_bytes(arg(args, 4, {"string": "", "option": "Hex"}))
+    if key_bits < 1 or key_bits % 8:
+        raise ValueError("key size must be a positive multiple of 8 bits")
+    if iterations < 1:
+        raise ValueError("iterations must be positive")
     output = previous = b""
     while len(output) < key_bits // 8:
         digest = previous + passphrase + salt

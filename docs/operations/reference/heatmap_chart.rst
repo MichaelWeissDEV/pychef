@@ -82,12 +82,12 @@ Arguments are positional. Keep their order when using ``bake()`` or
    * - ``8``
      - Min colour value
      - ``string``
-     - ``'COLOURS.min'``
+     - ``'white'``
      - A Python string
    * - ``9``
      - Max colour value
      - ``string``
-     - ``'COLOURS.max'``
+     - ``'black'``
      - A Python string
 
 Recipe template
@@ -103,7 +103,7 @@ Recipe template
    from pychef import bake
 
    input_value = "example"
-   args = ['Line feed', 'Comma', 25, 25, True, '', '', False, 'COLOURS.min', 'COLOURS.max']
+   args = ['Line feed', 'Comma', 25, 25, True, '', '', False, 'white', 'black']
    result = bake(input_value, [{"op": 'Heatmap chart', "args": args}])
    print(result)
 
@@ -114,7 +114,7 @@ Pipeline example
 
    from pychef import Pipeline
 
-   args = ['Line feed', 'Comma', 25, 25, True, '', '', False, 'COLOURS.min', 'COLOURS.max']
+   args = ['Line feed', 'Comma', 25, 25, True, '', '', False, 'white', 'black']
    transform = Pipeline().then('Heatmap chart', *args)
    result = transform("example")
 
@@ -129,6 +129,6 @@ receive the input value and a positional argument tuple:
 
    from pychef.operations.by_operation.heatmap_chart import run
 
-   result = run("example", tuple(['Line feed', 'Comma', 25, 25, True, '', '', False, 'COLOURS.min', 'COLOURS.max']))
+   result = run("example", tuple(['Line feed', 'Comma', 25, 25, True, '', '', False, 'white', 'black']))
 
 .. autofunction:: pychef.operations.by_operation.heatmap_chart.run

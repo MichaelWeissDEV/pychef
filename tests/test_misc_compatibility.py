@@ -62,7 +62,7 @@ def test_fuzzy_match_highlights_subsequence_and_escapes_html() -> None:
 @pytest.mark.parametrize(
     ("plain", "mode", "expected"),
     [
-        ("“Hello,” she said, \u2018yes.\u2019", "Include", '"Hello," she said, \'yes.\''),
+        ("“Hello,” she said, \u2018yes.\u2019", "Include", "\"Hello,\" she said, 'yes.'"),
         ("page 1\u20133 — wait…", "Include", "page 1-3 -- wait..."),
         ("Foo© Bar® Baz™", "Include", "Foo(c) Bar(r) Baz(tm)"),
         ("← → ↔ ⇒ « »", "Include", "<-- --> <-> ==> << >>"),
@@ -86,9 +86,7 @@ def test_random_generator_output_formats_are_cyberchef_compatible(
     assert run("Pseudo-Random Number Generator", "", [3, "Raw"]) == b"\x01\x02\x03"
 
     monkeypatch.setattr(misc.secrets, "randbelow", lambda _range: 1)
-    assert run("Pseudo-Random Integer Generator", "", [2, 10, 20, "Comma", "Decimal"]) == (
-        "11,11"
-    )
+    assert run("Pseudo-Random Integer Generator", "", [2, 10, 20, "Comma", "Decimal"]) == ("11,11")
     monkeypatch.setattr(misc.secrets, "randbelow", lambda _range: 0)
     assert run("Pseudo-Random Integer Generator", "", [1, 65, 65, "Space", "Raw"]) == "A"
 
@@ -123,6 +121,56 @@ def test_sql_beautify_official_nested_upsert_vector() -> None:
         "  Field1 = new_data.Field1,\n  Field2 = new_data.Field2;"
     )
     assert run("SQL Beautify", source, ["  "]) == expected
+
+
+def test_derive_evp_key_known_openssl_vectors_and_ignores_input() -> None:
+    password = {"string": "password", "option": "UTF8"}
+    salt = {"string": "3132333435363738", "option": "Hex"}
+    args = [password, 256, 1, "MD5", salt]
+    expected = "bbb0ddff1b944b3cc68eaaeb7ac20099e5155bae6ed28f668b60cbc4157de1bd"
+    assert run("Derive EVP key", "ignored", args) == expected
+    assert run("Derive EVP key", "different input", args) == expected
+    assert (
+        run(
+            "Derive EVP key",
+            "also ignored",
+            [password, 128, 1, "MD5", {"string": "", "option": "Hex"}],
+        )
+        == "5f4dcc3b5aa765d61d8327deb882cf99"
+    )
+
+
+def test_extract_dates_and_file_paths_follow_upstream_patterns_and_options() -> None:
+    dates = "valid 2026-08-01 01/08/2026 08.01.2026 invalid 26-8-1 1899-01-01"
+    assert run("Extract dates", dates) == "2026-08-01\n01/08/2026\n08.01.2026"
+    assert run("Extract dates", dates, [True]).startswith("Total found: 3\n\n")
+
+    paths = r"C:\Users\Alice\flag.txt /var/log/auth.log C:\Users\Alice\flag.txt /tmp/a"
+    extracted = run("Extract file paths", paths, [True, True, True, True, True])
+    assert extracted == "Total found: 3\n\n/tmp/a\n/var/log/auth.log\nC:\\Users\\Alice\\flag.txt"
+    assert run("Extract file paths", paths, [False, False]) == ""
+
+
+def test_code_minifiers_do_not_corrupt_strings_or_comment_like_content() -> None:
+    javascript = 'const url = "https://example.test/a//b"; // remove me\nconst value = "{ x; }";'
+    minified = run("JavaScript Minify", javascript)
+    assert minified == 'const url="https://example.test/a//b";const value="{ x; }";'
+    beautified = run("JavaScript Beautify", minified, ["  "])
+    assert '"https://example.test/a//b"' in beautified
+    assert '"{ x; }"' in beautified
+    css = 'a::before { content: "/* not a comment */"; color: red; } /* remove */'
+    assert run("CSS Minify", css, [False]) == 'a::before{content:"/* not a comment */";color:red;}'
+
+
+def test_substitute_official_vectors_ranges_and_case_handling() -> None:
+    plain = "flee at once. we are discovered!"
+    source = "abcdefghijklmnopqrstuvwxyz"
+    target = "zebrascdfghijklmnopqtuvwxy"
+    assert run("Substitute", plain, [source, target]) == "siaa zq lkba. va zoa rfpbluaoar!"
+    assert run("Substitute", plain, [source, target[:-1]]).startswith(
+        "Warning: Plaintext and Ciphertext lengths differ\n\n"
+    )
+    assert run("Substitute", "AbC 012", ["a-c0-2", "x-z7-9", True]) == "XyZ 789"
 
 
 @pytest.mark.parametrize(

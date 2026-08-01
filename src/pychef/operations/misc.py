@@ -14,7 +14,7 @@ from typing import Any
 
 from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
-from ._utils import arg, char_rep, require_int
+from ._utils import arg, char_rep, expand_alphabet, require_int
 
 
 @implementation("Comment", category="Flow control")
@@ -195,9 +195,10 @@ def diff(value: Data, args: Args) -> str:
 def fuzzy_match(value: Data, args: Args) -> str:
     text = to_text(value)
     pattern = str(arg(args, 0, ""))
-    weights = tuple(float(arg(args, index, default)) for index, default in enumerate(
-        (15, 30, 30, 15, -5, -15, -1), start=1
-    ))
+    weights = tuple(
+        float(arg(args, index, default))
+        for index, default in enumerate((15, 30, 30, 15, -5, -15, -1), start=1)
+    )
     matches: list[list[int]] = []
     start = 0
     while pattern and start < len(text):
@@ -272,7 +273,16 @@ def _best_fuzzy_indexes(
 
 @implementation("Extract dates", category="Extraction")
 def extract_dates(value: Data, args: Args) -> str:
-    pattern = re.compile(r"\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b")
+    year = r"(?:19|20)\d\d"
+    month = r"(?:0[1-9]|1[012])"
+    day = r"(?:0[1-9]|[12][0-9]|3[01])"
+    divider = r"[- /.]"
+    pattern = re.compile(
+        rf"{year}{divider}{month}{divider}{day}|"
+        rf"{day}{divider}{month}{divider}{year}|"
+        rf"{month}{divider}{day}{divider}{year}",
+        re.IGNORECASE,
+    )
     matches = pattern.findall(to_text(value))
     output = "\n".join(matches)
     return f"Total found: {len(matches)}\n\n{output}" if bool(arg(args, 0, False)) else output
@@ -280,16 +290,20 @@ def extract_dates(value: Data, args: Args) -> str:
 
 @implementation("Extract file paths", category="Extraction")
 def extract_file_paths(value: Data, args: Args) -> str:
-    matches: list[str] = []
+    patterns: list[str] = []
     text = to_text(value)
     if bool(arg(args, 0, True)):
-        matches.extend(re.findall(r"\b[A-Za-z]:\\(?:[^\\\r\n]+\\)*[^\\\r\n\s]+", text))
+        windows_name = r"[A-Z\d][A-Z\d\- '_()~]{0,61}"
+        patterns.append(rf"[A-Z]:\\(?:{windows_name}\\?)*{windows_name}(?:\.[A-Z\d]{{1,6}})?")
     if bool(arg(args, 1, True)):
-        matches.extend(re.findall(r"(?<!\w)/(?:[^/\s]+/)*[^/\s]+", text))
+        patterns.append(r"(?:/[A-Z\d.][A-Z\d\-.]{0,61})+")
+    if not patterns:
+        return ""
+    matches = re.findall("|".join(f"(?:{pattern})" for pattern in patterns), text, re.IGNORECASE)
     if bool(arg(args, 4, False)):
         matches = list(dict.fromkeys(matches))
     if bool(arg(args, 3, False)):
-        matches.sort()
+        matches.sort(key=str.casefold)
     output = "\n".join(matches)
     return f"Total found: {len(matches)}\n\n{output}" if bool(arg(args, 2, False)) else output
 
@@ -384,15 +398,30 @@ def caret_m_decode(value: Data, _args: Args) -> bytes:
 
 @implementation("Substitute", category="Ciphers")
 def substitute(value: Data, args: Args) -> str:
-    plaintext = str(arg(args, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    ciphertext = str(arg(args, 1, "XYZABCDEFGHIJKLMNOPQRSTUVW"))
+    from .text import _escaped
+
+    plaintext = expand_alphabet(_escaped(arg(args, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")))
+    ciphertext = expand_alphabet(_escaped(arg(args, 1, "XYZABCDEFGHIJKLMNOPQRSTUVW")))
     ignore_case = bool(arg(args, 2, False))
-    if len(plaintext) != len(ciphertext):
-        raise ValueError("plaintext and ciphertext alphabets must have the same length")
-    table = str.maketrans(plaintext, ciphertext)
-    if ignore_case:
-        table.update(str.maketrans(plaintext.lower(), ciphertext.lower()))
-    return to_text(value).translate(table)
+    substitutions = dict(zip(plaintext, ciphertext, strict=False))
+    output = (
+        "Warning: Plaintext and Ciphertext lengths differ\n\n"
+        if len(plaintext) != len(ciphertext)
+        else ""
+    )
+    for character in to_text(value):
+        replacement = substitutions.get(character)
+        if replacement is None and ignore_case:
+            replacement = substitutions.get(character.swapcase())
+        if replacement is None:
+            output += character
+        elif ignore_case and character.isupper():
+            output += replacement.upper()
+        elif ignore_case and character.islower():
+            output += replacement.lower()
+        else:
+            output += replacement
+    return output
 
 
 @implementation("Template", category="Text")
@@ -646,15 +675,64 @@ def to_table(value: Data, args: Args) -> str:
 
 
 def _minify_code(value: Data, preserve_comments: bool = False) -> str:
-    text = to_text(value)
-    if not preserve_comments:
-        text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-        text = re.sub(r"//[^\r\n]*", "", text)
-    return re.sub(r"\s*([{};,:>+~=])\s*", r"\1", re.sub(r"\s+", " ", text)).strip()
+    text, protected = _protect_code(to_text(value), preserve_comments)
+    text = re.sub(r"\s*([{};,:>+~=])\s*", r"\1", re.sub(r"\s+", " ", text)).strip()
+    for marker, original in protected.items():
+        text = text.replace(marker, original)
+    return text
+
+
+def _protect_code(text: str, preserve_comments: bool) -> tuple[str, dict[str, str]]:
+    output: list[str] = []
+    protected: dict[str, str] = {}
+    index = 0
+
+    def store(original: str) -> None:
+        marker = f"\ue000{len(protected)}\ue001"
+        protected[marker] = original
+        output.append(marker)
+
+    while index < len(text):
+        if text[index] in {"'", '"', "`"}:
+            quote = text[index]
+            end = index + 1
+            while end < len(text):
+                if text[end] == "\\":
+                    end += 2
+                elif end < len(text) and text[end] == quote:
+                    end += 1
+                    break
+                else:
+                    end += 1
+            store(text[index:end])
+            index = end
+        elif text.startswith("/*", index):
+            end = text.find("*/", index + 2)
+            end = len(text) if end < 0 else end + 2
+            if preserve_comments:
+                store(text[index:end])
+            else:
+                output.append(" ")
+            index = end
+        elif text.startswith("//", index):
+            end = next(
+                (position for position in range(index + 2, len(text)) if text[position] in "\r\n"),
+                len(text),
+            )
+            if preserve_comments:
+                store(text[index:end])
+            else:
+                output.append(" ")
+            index = end
+        else:
+            output.append(text[index])
+            index += 1
+    return "".join(output), protected
 
 
 def _beautify_code(value: Data, indent: str) -> str:
-    text = _minify_code(value, preserve_comments=True)
+    masked, protected = _protect_code(to_text(value), True)
+    text = re.sub(r"\s*([{};,:>+~=])\s*", r"\1", re.sub(r"\s+", " ", masked)).strip()
     output: list[str] = []
     level = 0
     for character in text:
@@ -669,7 +747,10 @@ def _beautify_code(value: Data, indent: str) -> str:
             output.append(";\n" + indent * level)
         else:
             output.append(character)
-    return "".join(output).strip()
+    rendered = "".join(output).strip()
+    for marker, original in protected.items():
+        rendered = rendered.replace(marker, original)
+    return rendered
 
 
 @implementation("CSS Minify", category="Code")
@@ -720,9 +801,7 @@ _SQL_CLAUSES = (
 
 def _sql_tokens(value: Data) -> list[str]:
     return [
-        token
-        for token in _SQL_TOKEN.findall(to_text(value))
-        if not token.startswith(("--", "/*"))
+        token for token in _SQL_TOKEN.findall(to_text(value)) if not token.startswith(("--", "/*"))
     ]
 
 

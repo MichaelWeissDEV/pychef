@@ -41,7 +41,7 @@ Arguments are positional. Keep their order when using ``bake()`` or
    * - ``0``
      - Radix
      - ``number``
-     - ``16``
+     - ``36``
      - A Python integer or floating-point value
 
 Recipe template
@@ -57,7 +57,7 @@ Recipe template
    from pychef import bake
 
    input_value = "example"
-   args = [16]
+   args = [36]
    result = bake(input_value, [{"op": 'From Base', "args": args}])
    print(result)
 
@@ -68,7 +68,7 @@ Pipeline example
 
    from pychef import Pipeline
 
-   args = [16]
+   args = [36]
    transform = Pipeline().then('From Base', *args)
    result = transform("example")
 
@@ -83,6 +83,6 @@ receive the input value and a positional argument tuple:
 
    from pychef.operations.by_operation.from_base import run
 
-   result = run("example", tuple([16]))
+   result = run("example", tuple([36]))
 
 .. autofunction:: pychef.operations.by_operation.from_base.run

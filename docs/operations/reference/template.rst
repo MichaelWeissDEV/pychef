@@ -24,6 +24,10 @@ be rendered to plain-text only, to prevent XSS.
    :doc:`../../compatibility` for the verified
    scope and known boundaries.
 
+.. warning::
+
+   The pure-Python renderer supports variables, raw variables, each/if/unless blocks, parent and root paths, and inline partials; arbitrary Handlebars helpers are not available.
+
 Arguments and options
 ---------------------
 

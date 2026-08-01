@@ -66,17 +66,17 @@ Arguments are positional. Keep their order when using ``bake()`` or
    * - ``5``
      - Colour
      - ``string``
-     - ``'COLOURS.max'``
+     - ``'black'``
      - A Python string
    * - ``6``
      - Point radius
      - ``number``
-     - ``'mediumseagreen'``
+     - ``10``
      - A Python integer or floating-point value
    * - ``7``
      - Use colour from third column
      - ``boolean``
-     - ``10``
+     - ``False``
      - ``True`` or ``False``
 
 Recipe template
@@ -92,7 +92,7 @@ Recipe template
    from pychef import bake
 
    input_value = "example"
-   args = ['Line feed', 'Comma', True, '', '', 'COLOURS.max', 'mediumseagreen', 10]
+   args = ['Line feed', 'Comma', True, '', '', 'black', 10, False]
    result = bake(input_value, [{"op": 'Scatter chart', "args": args}])
    print(result)
 
@@ -103,7 +103,7 @@ Pipeline example
 
    from pychef import Pipeline
 
-   args = ['Line feed', 'Comma', True, '', '', 'COLOURS.max', 'mediumseagreen', 10]
+   args = ['Line feed', 'Comma', True, '', '', 'black', 10, False]
    transform = Pipeline().then('Scatter chart', *args)
    result = transform("example")
 
@@ -118,6 +118,6 @@ receive the input value and a positional argument tuple:
 
    from pychef.operations.by_operation.scatter_chart import run
 
-   result = run("example", tuple(['Line feed', 'Comma', True, '', '', 'COLOURS.max', 'mediumseagreen', 10]))
+   result = run("example", tuple(['Line feed', 'Comma', True, '', '', 'black', 10, False]))
 
 .. autofunction:: pychef.operations.by_operation.scatter_chart.run

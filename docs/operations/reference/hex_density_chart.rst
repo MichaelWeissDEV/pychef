@@ -80,12 +80,12 @@ Arguments are positional. Keep their order when using ``bake()`` or
    * - ``8``
      - Min colour value
      - ``string``
-     - ``'COLOURS.min'``
+     - ``'white'``
      - A Python string
    * - ``9``
      - Max colour value
      - ``string``
-     - ``'COLOURS.max'``
+     - ``'black'``
      - A Python string
    * - ``10``
      - Draw empty hexagons within data boundaries
@@ -106,7 +106,7 @@ Recipe template
    from pychef import bake
 
    input_value = "example"
-   args = ['Line feed', 'Comma', 25, 15, True, '', '', False, 'COLOURS.min', 'COLOURS.max', False]
+   args = ['Line feed', 'Comma', 25, 15, True, '', '', False, 'white', 'black', False]
    result = bake(input_value, [{"op": 'Hex Density chart', "args": args}])
    print(result)
 
@@ -117,7 +117,7 @@ Pipeline example
 
    from pychef import Pipeline
 
-   args = ['Line feed', 'Comma', 25, 15, True, '', '', False, 'COLOURS.min', 'COLOURS.max', False]
+   args = ['Line feed', 'Comma', 25, 15, True, '', '', False, 'white', 'black', False]
    transform = Pipeline().then('Hex Density chart', *args)
    result = transform("example")
 
@@ -132,6 +132,6 @@ receive the input value and a positional argument tuple:
 
    from pychef.operations.by_operation.hex_density_chart import run
 
-   result = run("example", tuple(['Line feed', 'Comma', 25, 15, True, '', '', False, 'COLOURS.min', 'COLOURS.max', False]))
+   result = run("example", tuple(['Line feed', 'Comma', 25, 15, True, '', '', False, 'white', 'black', False]))
 
 .. autofunction:: pychef.operations.by_operation.hex_density_chart.run
