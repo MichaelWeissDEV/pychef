@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ...registry import operation
 from ...types import Args, Data
-from ..misc import code_minify as _implementation
+from ..misc import sql_minify as _implementation
 
 NAME = "SQL Minify"
 CATEGORY = "Code"
