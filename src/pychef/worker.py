@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import pickle
+import sys
 from contextlib import suppress
 from time import perf_counter
 from typing import Any, Literal
@@ -17,23 +19,27 @@ def _worker_entry(
     value: Data,
     config: Any,
     policy: ExecutionPolicy,
+    hard_memory_limit_bytes: int | None,
     return_type: Literal["str", "bytes"] | None,
     trace: bool,
 ) -> None:
     """Entry point executed in an isolated child process."""
     try:
-        # Try applying OS-level hard memory limit if configured
-        if policy.max_memory_bytes is not None:
+        # Apply OS-level hard memory limit if configured and supported
+        if hard_memory_limit_bytes is not None:
             try:
                 import resource
 
-                limit = policy.max_memory_bytes
                 if hasattr(resource, "RLIMIT_AS"):
-                    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+                    resource.setrlimit(
+                        resource.RLIMIT_AS, (hard_memory_limit_bytes, hard_memory_limit_bytes)
+                    )
                 elif hasattr(resource, "RLIMIT_DATA"):
-                    resource.setrlimit(resource.RLIMIT_DATA, (limit, limit))
-            except (ImportError, ValueError, OSError):
-                pass
+                    resource.setrlimit(
+                        resource.RLIMIT_DATA, (hard_memory_limit_bytes, hard_memory_limit_bytes)
+                    )
+            except (ImportError, ValueError, OSError) as exc:
+                raise RuntimeError(f"Failed to enforce OS hard memory limit: {exc}") from exc
 
         from .recipe import Recipe, _convert_result
 
@@ -53,13 +59,24 @@ def _worker_entry(
         )
     except BaseException as exc:
         exec_id = getattr(context, "execution_id", None) if "context" in locals() else None
-        conn.send(
-            {
-                "success": False,
-                "error": exc,
-                "execution_id": exec_id,
+        err_payload: Any = exc
+        try:
+            pickle.dumps(exc)
+        except Exception:
+            err_payload = {
+                "__unpicklable__": True,
+                "type": type(exc).__name__,
+                "module": type(exc).__module__,
+                "message": str(exc),
             }
-        )
+        with suppress(OSError):
+            conn.send(
+                {
+                    "success": False,
+                    "error": err_payload,
+                    "execution_id": exec_id,
+                }
+            )
     finally:
         with suppress(OSError):
             conn.close()
@@ -77,9 +94,34 @@ class IsolatedWorker:
         *,
         timeout: float | None = None,
         policy: ExecutionPolicy | None = None,
+        hard_memory_limit_bytes: int | None = None,
     ) -> None:
+        if hard_memory_limit_bytes is not None:
+            if not self.is_hard_memory_limit_supported():
+                raise RuntimeError(
+                    f"Hard process memory limits are not supported on platform '{sys.platform}'. "
+                    "Use cooperative max_memory_bytes in ExecutionPolicy or run inside "
+                    "cgroups/containers."
+                )
+            if not isinstance(hard_memory_limit_bytes, int) or hard_memory_limit_bytes <= 0:
+                raise ValueError("hard_memory_limit_bytes must be a positive integer")
         self.timeout = timeout
         self.policy = policy or ExecutionPolicy.safe()
+        self.hard_memory_limit_bytes = hard_memory_limit_bytes
+        self._current_process: Any = None
+        self._closed: bool = False
+
+    @classmethod
+    def is_hard_memory_limit_supported(cls) -> bool:
+        """Return True if the current operating system supports enforcing RLIMIT_AS/DATA."""
+        if not sys.platform.startswith("linux"):
+            return False
+        try:
+            import resource
+
+            return hasattr(resource, "RLIMIT_AS") or hasattr(resource, "RLIMIT_DATA")
+        except ImportError:
+            return False
 
     def __enter__(self) -> IsolatedWorker:
         return self
@@ -93,7 +135,11 @@ class IsolatedWorker:
         self.close()
 
     def close(self) -> None:
-        """Release worker resources."""
+        """Release worker resources and terminate running processes."""
+        self._closed = True
+        if self._current_process is not None:
+            self._terminate_process(self._current_process)
+            self._current_process = None
 
     def run(
         self,
@@ -101,9 +147,25 @@ class IsolatedWorker:
         recipe: RecipeConfig | Any,
         *,
         policy: ExecutionPolicy | None = None,
+        hard_memory_limit_bytes: int | None = None,
         return_type: Literal["str", "bytes"] | None = None,
         trace: bool = False,
     ) -> BakeResult:
+        if self._closed:
+            raise RuntimeError("IsolatedWorker is closed")
+
+        eff_hard_limit = (
+            hard_memory_limit_bytes
+            if hard_memory_limit_bytes is not None
+            else self.hard_memory_limit_bytes
+        )
+        if eff_hard_limit is not None and not self.is_hard_memory_limit_supported():
+            raise RuntimeError(
+                f"Hard process memory limits are not supported on platform '{sys.platform}'. "
+                "Use cooperative max_memory_bytes in ExecutionPolicy or run inside "
+                "cgroups/containers."
+            )
+
         eff_policy = policy or self.policy
         # Extract serializable step definitions if Recipe instance
         config = recipe.steps if hasattr(recipe, "steps") else recipe
@@ -116,8 +178,9 @@ class IsolatedWorker:
 
         process = ctx.Process(
             target=_worker_entry,
-            args=(child_conn, value, config, eff_policy, return_type, trace),
+            args=(child_conn, value, config, eff_policy, eff_hard_limit, return_type, trace),
         )
+        self._current_process = process
         process.start()
         child_conn.close()
 
@@ -149,6 +212,7 @@ class IsolatedWorker:
             with suppress(OSError):
                 parent_conn.close()
             self._terminate_process(process)
+            self._current_process = None
 
         duration_ms = (perf_counter() - started) * 1000
 
@@ -165,6 +229,11 @@ class IsolatedWorker:
             )
         else:
             err = payload["error"]
+            if isinstance(err, dict) and err.get("__unpicklable__"):
+                err_type = err.get("type", "Exception")
+                err_module = err.get("module", "builtins")
+                err_msg = err.get("message", "Unknown worker error")
+                raise PyChefError(f"Worker raised {err_module}.{err_type}: {err_msg}")
             if isinstance(err, BaseException):
                 raise err
             raise PyChefError(str(err))
@@ -172,15 +241,17 @@ class IsolatedWorker:
     @staticmethod
     def _terminate_process(process: Any) -> None:
         """Safely ensure child process is stopped and reaped without zombies."""
-        if process.is_alive():
-            try:
+        try:
+            if process.is_alive():
                 process.terminate()
                 process.join(timeout=1.0)
                 if process.is_alive():
                     process.kill()
                     process.join(timeout=1.0)
-            except OSError:
-                pass
+            else:
+                process.join(timeout=0.1)
+        except OSError:
+            pass
 
 
 def bake_isolated(
@@ -189,8 +260,13 @@ def bake_isolated(
     *,
     policy: ExecutionPolicy | None = None,
     timeout: float | None = None,
+    hard_memory_limit_bytes: int | None = None,
     return_type: Literal["str", "bytes"] | None = None,
 ) -> Data:
     """Execute *recipe* on *value* in a separate worker process."""
-    worker = IsolatedWorker(timeout=timeout, policy=policy)
+    worker = IsolatedWorker(
+        timeout=timeout,
+        policy=policy,
+        hard_memory_limit_bytes=hard_memory_limit_bytes,
+    )
     return worker.run(value, recipe, return_type=return_type).result

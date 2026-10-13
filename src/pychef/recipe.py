@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import replace
 from time import perf_counter
 from typing import Any, Literal
@@ -164,6 +165,7 @@ class Recipe:
                     outputs: list[str] = []
                     text = to_text(value)
                     accumulated_bytes = 0
+                    merge_delim_bytes = len(merge_delimiter.encode("utf-8", "surrogatepass"))
                     for part in _split_iter(text, split_delimiter):
                         ctx.charge_branch(step.op, abs_index)
                         try:
@@ -179,7 +181,10 @@ class Recipe:
                             transformed_res = part
                         part_str = to_text(transformed_res)
                         outputs.append(part_str)
-                        accumulated_bytes += len(part_str.encode("utf-8", "surrogatepass"))
+                        delim_cost = merge_delim_bytes if len(outputs) > 1 else 0
+                        accumulated_bytes += (
+                            len(part_str.encode("utf-8", "surrogatepass")) + delim_cost
+                        )
                         ctx.check_output(accumulated_bytes, step.op, abs_index)
                     value = merge_delimiter.join(outputs)
                 else:
@@ -201,6 +206,7 @@ class Recipe:
                         prefix = source[cursor:start]
                         output.append(prefix)
                         accumulated_bytes += len(prefix.encode("utf-8", "surrogatepass"))
+                        ctx.check_output(accumulated_bytes, step.op, abs_index)
                         ctx.charge_branch(step.op, abs_index)
                         try:
                             with ctx.nested(step.op, abs_index):
@@ -222,6 +228,8 @@ class Recipe:
                             break
                     suffix = source[cursor:]
                     output.append(suffix)
+                    accumulated_bytes += len(suffix.encode("utf-8", "surrogatepass"))
+                    ctx.check_output(accumulated_bytes, step.op, abs_index)
                     value = "".join(output)
                 ctx.check_output(value, step.op, abs_index)
                 progress = merge_index + 1
@@ -245,9 +253,10 @@ class Recipe:
                 ctx.record(step.op, abs_index, before, None, started, exc)
                 raise
             except Exception as exc:
+                sanitized_msg = _sanitize_error_message(str(exc), step.args)
                 error = OperationError(
                     step.op,
-                    str(exc),
+                    sanitized_msg,
                     step_index=abs_index,
                     branch_path=ctx.branch_path,
                     execution_id=ctx.execution_id,
@@ -259,6 +268,98 @@ class Recipe:
             progress = index + 1
             index += 1
         return value, progress
+
+
+_SAFE_ERROR_WORDS = frozenset(
+    {
+        "aes",
+        "des",
+        "triple des",
+        "blowfish",
+        "twofish",
+        "rc2",
+        "rc4",
+        "rc6",
+        "cast-128",
+        "cast-256",
+        "seed",
+        "sm4",
+        "aria",
+        "camellia",
+        "gost 28147-89",
+        "argon2i",
+        "argon2d",
+        "argon2id",
+        "bcrypt",
+        "scrypt",
+        "pbkdf2",
+        "md5",
+        "sha1",
+        "sha256",
+        "sha512",
+        "sha3",
+        "blake2b",
+        "blake2s",
+        "raw",
+        "hex",
+        "base64",
+        "utf8",
+        "utf-8",
+        "ascii",
+        "latin1",
+        "none",
+        "auto",
+        "true",
+        "false",
+        "invalid",
+        "valid",
+        "error",
+        "cbc",
+        "ecb",
+        "cfb",
+        "ofb",
+        "ctr",
+        "gcm",
+        "ccm",
+        "encoded hash",
+        "raw hash",
+        "hex hash",
+    }
+)
+
+
+def _sanitize_error_message(message: str, args: Sequence[Any]) -> str:
+    """Sanitize exception messages to prevent leaking sensitive arguments (keys, passwords)."""
+    sanitized = message
+
+    def extract_secrets(obj: Any) -> list[str]:
+        secrets: list[str] = []
+        if isinstance(obj, str):
+            if len(obj) >= 4 and obj.lower() not in _SAFE_ERROR_WORDS:
+                secrets.append(obj)
+        elif isinstance(obj, bytes):
+            if len(obj) >= 4:
+                with suppress(UnicodeError):
+                    text = obj.decode("utf-8", "surrogatepass")
+                    if text.lower() not in _SAFE_ERROR_WORDS:
+                        secrets.append(text)
+        elif isinstance(obj, Mapping):
+            for k, v in obj.items():
+                if k == "string" and isinstance(v, (str, bytes)):
+                    val_str = v if isinstance(v, str) else v.decode("utf-8", "surrogatepass")
+                    if len(val_str) >= 4 and val_str.lower() not in _SAFE_ERROR_WORDS:
+                        secrets.append(val_str)
+                else:
+                    secrets.extend(extract_secrets(v))
+        elif isinstance(obj, (list, tuple)):
+            for v in obj:
+                secrets.extend(extract_secrets(v))
+        return secrets
+
+    for secret in extract_secrets(args):
+        if secret in sanitized:
+            sanitized = sanitized.replace(secret, "[REDACTED]")
+    return sanitized
 
 
 _FATAL_ERRORS = (ExecutionLimitError, OperationPermissionError)

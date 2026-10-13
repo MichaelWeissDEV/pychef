@@ -7,6 +7,9 @@ import hashlib
 import pytest
 
 from pychef import (
+    ExecutionLimitError,
+    ExecutionPolicy,
+    OperationPermissionError,
     Pipeline,
     RecipeError,
     aes_decrypt,
@@ -164,3 +167,34 @@ def test_cyclic_patterns_find_integer_and_bytes_offsets() -> None:
     assert cyclic(0) == b""
     with pytest.raises(ValueError, match="unique cycle"):
         cyclic(5, alphabet=b"ab", n=2)
+
+
+def test_pipeline_trace_enforces_policy_limits() -> None:
+    pipeline = Pipeline().to_hex().to_base64()
+    # Step limit reached
+    with pytest.raises(ExecutionLimitError) as info:
+        pipeline.trace("hello", policy=ExecutionPolicy(max_steps=1))
+    assert info.value.limit == "max_steps"
+
+    # Trace buffer limit reached
+    with pytest.raises(ExecutionLimitError) as info:
+        pipeline.trace("hello", policy=ExecutionPolicy(max_trace_bytes=50))
+    assert info.value.limit == "max_trace_bytes"
+
+
+def test_pipeline_trace_enforces_network_policy() -> None:
+    pipeline = Pipeline(["HTTP request"])
+    # Default policy blocks network
+    with pytest.raises(OperationPermissionError):
+        pipeline.trace("http://example.test/", policy=ExecutionPolicy.safe())
+
+
+def test_pipeline_trace_sizes_and_preview_truncation() -> None:
+    pipeline = Pipeline().to_hex().to_base64()
+    trace = pipeline.trace("hello world", max_preview_bytes=4)
+    assert len(trace) == 2
+    assert trace[0].input == "hell"
+    assert trace[0].truncated is True
+    assert trace[0].input_size == len("hello world")
+    assert trace[1].truncated is True
+    assert trace[1].output_size > 4

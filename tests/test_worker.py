@@ -44,3 +44,86 @@ def test_isolated_worker_limit_error_propagated() -> None:
 def test_bake_with_isolated_flag() -> None:
     res = bake("cyberchef", ["To Base64"], isolated=True)
     assert res == "Y3liZXJjaGVm"
+
+
+def test_isolated_worker_platform_support_check() -> None:
+    import sys
+
+    supported = IsolatedWorker.is_hard_memory_limit_supported()
+    if sys.platform.startswith("linux"):
+        import resource
+
+        expected = hasattr(resource, "RLIMIT_AS") or hasattr(resource, "RLIMIT_DATA")
+        assert supported is expected
+    else:
+        assert supported is False
+
+
+def test_isolated_worker_hard_limit_on_unsupported_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        IsolatedWorker, "is_hard_memory_limit_supported", classmethod(lambda cls: False)
+    )
+    with pytest.raises(RuntimeError, match="Hard process memory limits are not supported"):
+        IsolatedWorker(hard_memory_limit_bytes=100 * 1024 * 1024)
+
+    worker = IsolatedWorker()
+    with pytest.raises(RuntimeError, match="Hard process memory limits are not supported"):
+        worker.run("abc", ["To Hex"], hard_memory_limit_bytes=100 * 1024 * 1024)
+
+
+def test_isolated_worker_invalid_hard_limit_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        IsolatedWorker, "is_hard_memory_limit_supported", classmethod(lambda cls: True)
+    )
+    with pytest.raises(ValueError, match="positive integer"):
+        IsolatedWorker(hard_memory_limit_bytes=-1)
+    with pytest.raises(ValueError, match="positive integer"):
+        IsolatedWorker(hard_memory_limit_bytes=0)
+
+
+def test_isolated_worker_closed_raises() -> None:
+    worker = IsolatedWorker()
+    worker.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        worker.run("abc", ["To Hex"])
+
+
+def test_isolated_worker_trace_returned() -> None:
+    worker = IsolatedWorker()
+    res = worker.run("abc", ["To Hex"], trace=True)
+    assert len(res.trace) == 1
+    assert res.trace[0].operation == "To Hex"
+
+
+def test_isolated_worker_unpicklable_exception_handled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from typing import Any
+
+    from pychef.worker import _worker_entry
+
+    class DummyConn:
+        def __init__(self) -> None:
+            self.sent: list[dict[str, Any]] = []
+
+        def send(self, data: dict[str, Any]) -> None:
+            self.sent.append(data)
+
+        def close(self) -> None:
+            pass
+
+    class UnpicklableError(Exception):
+        def __reduce__(self) -> Any:
+            raise TypeError("Cannot pickle this error")
+
+    class BadRecipe:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            raise UnpicklableError("Something strange happened")
+
+    monkeypatch.setattr("pychef.recipe.Recipe", BadRecipe)
+    conn = DummyConn()
+    _worker_entry(conn, "abc", ["To Hex"], ExecutionPolicy(), None, None, False)
+    assert len(conn.sent) == 1
+    assert conn.sent[0]["success"] is False
+    assert conn.sent[0]["error"]["__unpicklable__"] is True
+    assert conn.sent[0]["error"]["type"] == "UnpicklableError"

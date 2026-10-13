@@ -32,17 +32,43 @@ NETWORK_OPERATIONS = frozenset({"HTTP request", "DNS over HTTPS"})
 _TRACE_ENTRY_OVERHEAD = 192  # conservative estimate of bytes per recorded trace step
 
 
+def _normalize_host(host: str) -> str:
+    text = str(host).strip().rstrip(".").lower()
+    try:
+        return text.encode("idna").decode("ascii")
+    except (UnicodeError, ValueError):
+        return text
+
+
+def _is_public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return whether *address* is a globally routable unicast address."""
+    if isinstance(address, ipaddress.IPv6Address):
+        embedded: list[ipaddress.IPv4Address] = []
+        if address.ipv4_mapped is not None:
+            embedded.append(address.ipv4_mapped)
+        if address.sixtofour is not None:
+            embedded.append(address.sixtofour)
+        if address in ipaddress.ip_network("64:ff9b::/96"):
+            embedded.append(ipaddress.IPv4Address(int(address) & 0xFFFFFFFF))
+        if address.teredo is not None:
+            embedded.extend(address.teredo)
+        if any(not _is_public(item) for item in embedded):
+            return False
+    return address.is_global and not address.is_multicast
+
+
 @dataclass(frozen=True, slots=True)
 class NetworkPolicy:
     """Configurable network policy governing outbound HTTP and DNS-over-HTTPS requests.
 
     Modes:
-    - ``"disabled"``: Outbound requests are blocked unless the target is explicitly
+
+    * ``"disabled"``: Outbound requests are blocked unless the target is explicitly
       matched by ``allowed_hosts`` or ``allowed_subnets``.
-    - ``"public_only"``: Only public, globally routable addresses are allowed; private,
+    * ``"public_only"``: Only public, globally routable addresses are allowed; private,
       loopback, link-local, and reserved ranges are blocked unless explicitly listed in
       ``allowed_hosts`` or ``allowed_subnets``. Strict SSRF and DNS rebinding protections apply.
-    - ``"unrestricted"``: All destinations (including private, localhost, link-local)
+    * ``"unrestricted"``: All destinations (including private, localhost, link-local)
       are permitted without restriction.
     """
 
@@ -55,25 +81,30 @@ class NetworkPolicy:
     denied_ports: tuple[int, ...] = ()
     allowed_schemes: tuple[str, ...] = ("http", "https")
     max_response_bytes: int | None = 64 * 1024 * 1024
-    timeout_seconds: float = 30.0
+    timeout_seconds: float | None = 30.0
     allow_redirects: bool = True
-    max_redirects: int = 5
+    max_redirects: int | None = 5
 
     def __post_init__(self) -> None:
         if self.mode not in {"disabled", "public_only", "unrestricted"}:
             raise ValueError(
                 f"mode must be 'disabled', 'public_only', or 'unrestricted', got {self.mode!r}"
             )
-        # Normalize hostnames to lowercase tuples
+        # Normalize hostnames to lowercase tuples without trailing dots
         object.__setattr__(
             self,
             "allowed_hosts",
-            tuple(str(h).lower().strip() for h in self.allowed_hosts),
+            tuple(_normalize_host(h) for h in self.allowed_hosts),
         )
         object.__setattr__(
             self,
             "denied_hosts",
-            tuple(str(h).lower().strip() for h in self.denied_hosts),
+            tuple(_normalize_host(h) for h in self.denied_hosts),
+        )
+        object.__setattr__(
+            self,
+            "allowed_schemes",
+            tuple(str(s).lower().strip() for s in self.allowed_schemes),
         )
         # Validate subnets
         for subnet in self.allowed_subnets:
@@ -95,108 +126,204 @@ class NetworkPolicy:
             or self.max_response_bytes < 0
         ):
             raise ValueError("max_response_bytes must be None or a non-negative integer")
-        if (
+        if self.timeout_seconds is not None and (
             isinstance(self.timeout_seconds, bool)
             or not isinstance(self.timeout_seconds, (int, float))
             or self.timeout_seconds <= 0
         ):
-            raise ValueError("timeout_seconds must be a positive number")
-        if (
+            raise ValueError("timeout_seconds must be None or a positive number")
+        if self.max_redirects is not None and (
             isinstance(self.max_redirects, bool)
             or not isinstance(self.max_redirects, int)
             or self.max_redirects < 0
         ):
-            raise ValueError("max_redirects must be a non-negative integer")
+            raise ValueError("max_redirects must be None or a non-negative integer")
 
     @classmethod
-    def disabled(cls) -> NetworkPolicy:
-        """Completely disable outbound network requests."""
-        return cls(mode="disabled")
+    def disabled(cls, **kwargs: Any) -> NetworkPolicy:
+        """Completely disable outbound network requests by default."""
+        policy = cls(mode="disabled")
+        return policy.with_overrides(**kwargs) if kwargs else policy
 
     @classmethod
-    def public_only(cls) -> NetworkPolicy:
+    def public_only(cls, **kwargs: Any) -> NetworkPolicy:
         """Allow requests only to verified public IP addresses with SSRF protection."""
-        return cls(mode="public_only")
+        policy = cls(mode="public_only")
+        return policy.with_overrides(**kwargs) if kwargs else policy
 
     @classmethod
-    def unrestricted(cls) -> NetworkPolicy:
+    def unrestricted(cls, **kwargs: Any) -> NetworkPolicy:
         """Allow outbound requests to any address, including private, local, and custom ports."""
-        return cls(mode="unrestricted", max_response_bytes=None)
+        policy = cls(mode="unrestricted", max_response_bytes=None)
+        return policy.with_overrides(**kwargs) if kwargs else policy
 
     def with_overrides(self, **kwargs: Any) -> NetworkPolicy:
         """Return a new immutable NetworkPolicy with the specified overrides."""
         return replace(self, **kwargs)
 
+    def is_host_allowed(self, host: str) -> bool:
+        """Check if a hostname is permitted under this policy."""
+        norm = _normalize_host(host)
+        if norm in self.denied_hosts:
+            return False
+        if norm in self.allowed_hosts:
+            return True
+        if self.mode == "disabled":
+            return False
+        if self.mode == "unrestricted":
+            return True
+        # For public_only: check if host is an IP address literal
+        try:
+            ip = ipaddress.ip_address(norm)
+            return self.is_ip_allowed(ip)
+        except ValueError:
+            return True
 
-@dataclass(frozen=True, slots=True)
+    def is_ip_allowed(self, ip: ipaddress.IPv4Address | ipaddress.IPv6Address | str) -> bool:
+        """Check if an IP address is permitted under this policy."""
+        if isinstance(ip, str):
+            try:
+                addr = ipaddress.ip_address(ip)
+            except ValueError:
+                return False
+        else:
+            addr = ip
+        text = str(addr)
+        if text in self.denied_hosts:
+            return False
+        for denied_sub in self.denied_subnets:
+            if addr in ipaddress.ip_network(denied_sub, strict=False):
+                return False
+        if text in self.allowed_hosts:
+            return True
+        for allowed_sub in self.allowed_subnets:
+            if addr in ipaddress.ip_network(allowed_sub, strict=False):
+                return True
+        if self.mode == "disabled":
+            return False
+        if self.mode == "unrestricted":
+            return True
+        if self.mode == "public_only":
+            return _is_public(addr)
+        return False
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class ExecutionPolicy:
     """Resource and permission limits for one recipe execution.
 
     ``None`` explicitly disables the respective numeric limit.
+
     Named profiles:
-    - :meth:`safe` (default): Conservative resource limits, network disabled.
-    - :meth:`untrusted`: Strict limits for untrusted data and recipes.
-    - :meth:`unrestricted`: All numeric limits disabled, unrestricted network access.
-    - :meth:`permissive`: Backward-compatible profile with unlimited numeric limits
+
+    * :meth:`safe` (default): Conservative resource limits, network disabled.
+    * :meth:`untrusted`: Strict limits for untrusted data and recipes.
+    * :meth:`unrestricted`: All numeric limits disabled, unrestricted network access.
+    * :meth:`permissive`: Backward-compatible profile with unlimited numeric limits
       and public network access.
     """
 
-    max_memory_bytes: int | None = 512 * 1024**2
-    max_input_bytes: int | None = 16 * 1024**2
-    max_output_bytes: int | None = 64 * 1024**2
-    max_steps: int | None = 10_000
-    max_branches: int | None = 10_000
-    max_recursion_depth: int | None = 8
-    max_trace_bytes: int | None = 1024**2
-    cooperative_deadline_seconds: float | None = 30.0
-    network: NetworkPolicy = field(default_factory=NetworkPolicy.disabled)
-    allow_network: bool | None = field(default=None)
+    max_memory_bytes: int | None
+    max_input_bytes: int | None
+    max_output_bytes: int | None
+    max_steps: int | None
+    max_branches: int | None
+    max_recursion_depth: int | None
+    max_trace_bytes: int | None
+    cooperative_deadline_seconds: float | None
+    network: NetworkPolicy
 
-    def __post_init__(self) -> None:
-        if self.allow_network is not None:
-            if not isinstance(self.allow_network, bool):
+    def __init__(
+        self,
+        *,
+        max_memory_bytes: int | None = 512 * 1024**2,
+        max_input_bytes: int | None = 16 * 1024**2,
+        max_output_bytes: int | None = 64 * 1024**2,
+        max_steps: int | None = 10_000,
+        max_branches: int | None = 10_000,
+        max_recursion_depth: int | None = 8,
+        max_trace_bytes: int | None = 1024**2,
+        cooperative_deadline_seconds: float | None = 30.0,
+        network: NetworkPolicy | None = None,
+        allow_network: bool | None = None,
+    ) -> None:
+        if allow_network is not None:
+            if not isinstance(allow_network, bool):
                 raise TypeError("allow_network must be a bool")
-            if self.allow_network and self.network.mode == "disabled":
-                object.__setattr__(self, "network", NetworkPolicy.public_only())
-            elif not self.allow_network and self.network.mode != "disabled":
-                object.__setattr__(self, "network", NetworkPolicy.disabled())
+            if network is not None:
+                has_net = (
+                    network.mode != "disabled"
+                    or bool(network.allowed_hosts)
+                    or bool(network.allowed_subnets)
+                )
+                if allow_network and not has_net:
+                    raise ValueError(
+                        "Conflicting network configuration: allow_network=True "
+                        "but network policy is disabled"
+                    )
+                if not allow_network and has_net:
+                    raise ValueError(
+                        "Conflicting network configuration: allow_network=False "
+                        "but network policy permits network"
+                    )
+                resolved_network = network
+            else:
+                resolved_network = (
+                    NetworkPolicy.public_only() if allow_network else NetworkPolicy.disabled()
+                )
         else:
-            is_allowed = (
-                self.network.mode != "disabled"
-                or bool(self.network.allowed_hosts)
-                or bool(self.network.allowed_subnets)
-            )
-            object.__setattr__(self, "allow_network", is_allowed)
+            resolved_network = network if network is not None else NetworkPolicy.disabled()
 
-        for name in (
-            "max_memory_bytes",
-            "max_input_bytes",
-            "max_output_bytes",
-            "max_steps",
-            "max_recursion_depth",
-            "max_branches",
-            "max_trace_bytes",
+        for name, value in (
+            ("max_memory_bytes", max_memory_bytes),
+            ("max_input_bytes", max_input_bytes),
+            ("max_output_bytes", max_output_bytes),
+            ("max_steps", max_steps),
+            ("max_recursion_depth", max_recursion_depth),
+            ("max_branches", max_branches),
+            ("max_trace_bytes", max_trace_bytes),
         ):
-            value = getattr(self, name)
             if value is not None and (
                 isinstance(value, bool) or not isinstance(value, int) or value < 0
             ):
                 raise ValueError(f"{name} must be None or a non-negative integer, got {value!r}")
-        deadline = self.cooperative_deadline_seconds
-        if deadline is not None and (
-            isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or deadline <= 0
+
+        if cooperative_deadline_seconds is not None and (
+            isinstance(cooperative_deadline_seconds, bool)
+            or not isinstance(cooperative_deadline_seconds, (int, float))
+            or cooperative_deadline_seconds <= 0
         ):
             raise ValueError("cooperative_deadline_seconds must be None or a positive number")
 
-    @classmethod
-    def safe(cls) -> ExecutionPolicy:
-        """Standard safe configuration: conservative limits, network disabled."""
-        return cls()
+        object.__setattr__(self, "max_memory_bytes", max_memory_bytes)
+        object.__setattr__(self, "max_input_bytes", max_input_bytes)
+        object.__setattr__(self, "max_output_bytes", max_output_bytes)
+        object.__setattr__(self, "max_steps", max_steps)
+        object.__setattr__(self, "max_branches", max_branches)
+        object.__setattr__(self, "max_recursion_depth", max_recursion_depth)
+        object.__setattr__(self, "max_trace_bytes", max_trace_bytes)
+        object.__setattr__(self, "cooperative_deadline_seconds", cooperative_deadline_seconds)
+        object.__setattr__(self, "network", resolved_network)
+
+    @property
+    def allow_network(self) -> bool:
+        """Compatibility property reflecting whether network requests are permitted."""
+        return (
+            self.network.mode != "disabled"
+            or bool(self.network.allowed_hosts)
+            or bool(self.network.allowed_subnets)
+        )
 
     @classmethod
-    def untrusted(cls) -> ExecutionPolicy:
+    def safe(cls, **kwargs: Any) -> ExecutionPolicy:
+        """Standard safe configuration: conservative limits, network disabled."""
+        policy = cls()
+        return policy.with_overrides(**kwargs) if kwargs else policy
+
+    @classmethod
+    def untrusted(cls, **kwargs: Any) -> ExecutionPolicy:
         """Conservative profile for untrusted recipes and inputs."""
-        return cls(
+        policy = cls(
             max_memory_bytes=128 * 1024 * 1024,
             max_input_bytes=16 * 1024 * 1024,
             max_output_bytes=64 * 1024 * 1024,
@@ -207,11 +334,12 @@ class ExecutionPolicy:
             cooperative_deadline_seconds=30.0,
             network=NetworkPolicy.disabled(),
         )
+        return policy.with_overrides(**kwargs) if kwargs else policy
 
     @classmethod
-    def unrestricted(cls) -> ExecutionPolicy:
+    def unrestricted(cls, **kwargs: Any) -> ExecutionPolicy:
         """Unrestricted configuration: all limits disabled, network unrestricted."""
-        return cls(
+        policy = cls(
             max_memory_bytes=None,
             max_input_bytes=None,
             max_output_bytes=None,
@@ -222,11 +350,12 @@ class ExecutionPolicy:
             cooperative_deadline_seconds=None,
             network=NetworkPolicy.unrestricted(),
         )
+        return policy.with_overrides(**kwargs) if kwargs else policy
 
     @classmethod
-    def permissive(cls) -> ExecutionPolicy:
+    def permissive(cls, **kwargs: Any) -> ExecutionPolicy:
         """Legacy profile: numeric limits disabled, public network allowed."""
-        return cls(
+        policy = cls(
             max_memory_bytes=None,
             max_input_bytes=None,
             max_output_bytes=None,
@@ -237,11 +366,18 @@ class ExecutionPolicy:
             cooperative_deadline_seconds=None,
             network=NetworkPolicy.public_only(),
         )
+        return policy.with_overrides(**kwargs) if kwargs else policy
 
     legacy = permissive
 
     def with_overrides(self, **kwargs: Any) -> ExecutionPolicy:
         """Return a new immutable ExecutionPolicy with specified overrides."""
+        if "allow_network" in kwargs:
+            allow = kwargs.pop("allow_network")
+            if "network" not in kwargs:
+                kwargs["network"] = (
+                    NetworkPolicy.public_only() if allow else NetworkPolicy.disabled()
+                )
         return replace(self, **kwargs)
 
 

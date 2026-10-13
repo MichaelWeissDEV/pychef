@@ -55,3 +55,26 @@ def test_by_operation_load_all() -> None:
     by_operation.load_all()
     assert len(registry) == 502
     assert all(name in registry for name in list_operations())
+
+
+def test_custom_registry_lazy_loads_and_isolates() -> None:
+    from typing import Any
+
+    from pychef import Operation, OperationRegistry
+
+    custom = OperationRegistry()
+    assert "To Hex" not in custom._operations
+    # Getting "To Hex" must successfully lazy load and populate custom._operations
+    op = custom.get("To Hex")
+    assert op.name == "To Hex"
+    assert "To Hex" in custom._operations
+    assert custom.get("To Hex") is op
+
+    # Custom override on custom registry does not affect global registry
+    def custom_hex(val: Any, args: Any) -> Any:
+        return "custom"
+
+    custom_override = OperationRegistry()
+    custom_override.register(Operation(name="To Hex", function=custom_hex))
+    assert custom_override.get("To Hex").run("test") == "custom"
+    assert registry.get("To Hex").run("test") != "custom"

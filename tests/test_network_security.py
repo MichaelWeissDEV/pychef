@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from pychef import ExecutionPolicy, OperationError, OperationPermissionError, bake
+from pychef import ExecutionPolicy, NetworkPolicy, OperationError, OperationPermissionError, bake
 from pychef.execution import active_policy
 from pychef.operations import network
 
@@ -294,3 +294,74 @@ def test_permissive_policy_permits_network(net: Net) -> None:
         )
         == "hello"
     )
+
+
+def test_network_policy_hostname_normalization() -> None:
+    pol = NetworkPolicy(
+        mode="public_only",
+        allowed_hosts=("Example.Com.", "MÜNCHEN.DE"),
+        denied_hosts=("EVIL.COM.",),
+    )
+    # Check normalized tuples
+    assert "example.com" in pol.allowed_hosts
+    assert "xn--mnchen-3ya.de" in pol.allowed_hosts
+    assert "evil.com" in pol.denied_hosts
+
+    # Check matches with trailing dots and casing
+    assert pol.is_host_allowed("EXAMPLE.COM.") is True
+    assert pol.is_host_allowed("example.com") is True
+    assert pol.is_host_allowed("münchen.de") is True
+    assert pol.is_host_allowed("xn--mnchen-3ya.de") is True
+
+    # Blocked host matches
+    assert pol.is_host_allowed("EVIL.COM.") is False
+    assert pol.is_host_allowed("evil.com") is False
+
+
+def test_network_policy_deny_overrides_allow() -> None:
+    # When a host is in both allowed and denied, denied wins
+    pol = NetworkPolicy(
+        mode="public_only",
+        allowed_hosts=("conflict.test",),
+        denied_hosts=("conflict.test",),
+    )
+    assert pol.is_host_allowed("conflict.test") is False
+
+    # When an IP is in both allowed and denied subnets, denied subnet wins
+    pol_subnet = NetworkPolicy(
+        mode="public_only",
+        allowed_subnets=("93.184.216.0/24",),
+        denied_subnets=("93.184.216.34/32",),
+    )
+    import ipaddress
+
+    ip = ipaddress.ip_address(PUBLIC_IP)
+    assert pol_subnet.is_ip_allowed(ip) is False
+
+
+def test_network_policy_unrestricted_allows_private_and_loopback(net: Net) -> None:
+    pol = NetworkPolicy.unrestricted()
+    import ipaddress
+
+    loopback = ipaddress.ip_address("127.0.0.1")
+    private = ipaddress.ip_address("10.0.0.1")
+    public = ipaddress.ip_address(PUBLIC_IP)
+    assert pol.is_ip_allowed(loopback) is True
+    assert pol.is_ip_allowed(private) is True
+    assert pol.is_ip_allowed(public) is True
+
+
+def test_network_policy_factories_and_attributes() -> None:
+    disabled = NetworkPolicy.disabled()
+    assert disabled.mode == "disabled"
+    assert disabled.is_host_allowed("example.com") is False
+
+    public = NetworkPolicy.public_only(timeout_seconds=15.0, max_redirects=3)
+    assert public.mode == "public_only"
+    assert public.timeout_seconds == 15.0
+    assert public.max_redirects == 3
+
+    unrestricted = NetworkPolicy.unrestricted(timeout_seconds=None, max_redirects=None)
+    assert unrestricted.mode == "unrestricted"
+    assert unrestricted.timeout_seconds is None
+    assert unrestricted.max_redirects is None

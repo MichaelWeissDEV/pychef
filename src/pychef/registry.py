@@ -61,6 +61,14 @@ class OperationRegistry:
                 op = self._operations.get(name)
                 if op is not None:
                     return op
+                if name in registry._operations:
+                    global_op = registry._operations[name]
+                    self._operations[name] = global_op
+                    return global_op
+            elif name in registry._operations:
+                global_op = registry._operations[name]
+                self._operations[name] = global_op
+                return global_op
             raise UnknownOperationError(f"unknown operation: {name}")
 
     def names(self) -> tuple[str, ...]:

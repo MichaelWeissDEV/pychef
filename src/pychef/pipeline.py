@@ -34,6 +34,9 @@ class PipelineTrace:
     name: str
     input: Any
     output: Any
+    input_size: int = 0
+    output_size: int = 0
+    truncated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,14 +240,95 @@ class Pipeline:
         """Transform a finite iterable while retaining input order."""
         return tuple(self.iter_transform(values, policy=policy))
 
-    def trace(self, value: Any) -> tuple[PipelineTrace, ...]:
-        """Run the pipeline and retain every intermediate input and output."""
-        trace: list[PipelineTrace] = []
-        for stage in self._stages:
-            stage_input = value
-            value = stage.run(value)
-            trace.append(PipelineTrace(stage.name, stage_input, value))
-        return tuple(trace)
+    def trace(
+        self,
+        value: Any,
+        *,
+        policy: ExecutionPolicy | None = None,
+        context: ExecutionContext | None = None,
+        max_preview_bytes: int | None = None,
+    ) -> tuple[PipelineTrace, ...]:
+        """Run the pipeline and retain intermediate inputs and outputs.
+
+        Enforces identical policy, step budget, deadline, and network constraints as
+        :meth:`transform`. Intermediate trace sizes are bounded by
+        ``policy.max_trace_bytes``.
+        """
+        if context is None:
+            context = ExecutionContext(policy=policy or ExecutionPolicy.safe(), trace_enabled=True)
+        elif policy is not None and policy is not context.policy:
+            raise ValueError("pass either policy or context, not both")
+
+        accumulated_trace_bytes = 0
+        limit_trace_bytes = context.policy.max_trace_bytes
+
+        with active_policy(context.policy):
+            if isinstance(value, (str, bytes)):
+                context.check_input(value)
+
+            trace: list[PipelineTrace] = []
+            for index, stage in enumerate(self._stages):
+                context.charge_step(stage.name, index)
+                if stage.recipe_step is not None:
+                    context.require_operation(stage.recipe_step.op, index)
+
+                started = perf_counter()
+                stage_input = value
+                try:
+                    value = stage.run(value)
+                except OperationError as exc:
+                    if exc.step_index is None:
+                        exc.step_index = index
+                        exc.branch_path = context.branch_path
+                        exc.execution_id = context.execution_id
+                    if isinstance(stage_input, (str, bytes)):
+                        context.record(stage.name, index, stage_input, None, started, exc)
+                    raise
+                except Exception as exc:
+                    if isinstance(stage_input, (str, bytes)):
+                        context.record(stage.name, index, stage_input, None, started, exc)
+                    raise
+
+                if isinstance(stage_input, (str, bytes)) and isinstance(value, (str, bytes)):
+                    context.record(stage.name, index, stage_input, value, started, None)
+                    context.check_output(value, stage.name, index)
+
+                # Track size of inputs/outputs for trace bounding
+                in_size = len(stage_input) if isinstance(stage_input, (bytes, str)) else 0
+                out_size = len(value) if isinstance(value, (bytes, str)) else 0
+
+                accumulated_trace_bytes += in_size + out_size + 64
+                if limit_trace_bytes is not None and accumulated_trace_bytes > limit_trace_bytes:
+                    raise context._limit(
+                        "max_trace_bytes",
+                        f"trace buffer exceeded {limit_trace_bytes} bytes",
+                        stage.name,
+                        index,
+                    )
+
+                saved_in = stage_input
+                saved_out = value
+                truncated = False
+                if max_preview_bytes is not None:
+                    if isinstance(saved_in, (str, bytes)) and len(saved_in) > max_preview_bytes:
+                        saved_in = saved_in[:max_preview_bytes]
+                        truncated = True
+                    if isinstance(saved_out, (str, bytes)) and len(saved_out) > max_preview_bytes:
+                        saved_out = saved_out[:max_preview_bytes]
+                        truncated = True
+
+                trace.append(
+                    PipelineTrace(
+                        name=stage.name,
+                        input=saved_in,
+                        output=saved_out,
+                        input_size=in_size,
+                        output_size=out_size,
+                        truncated=truncated,
+                    )
+                )
+
+            return tuple(trace)
 
     def from_hex(self, delimiter: str = "Auto") -> Pipeline:
         return self.then("From Hex", delimiter)

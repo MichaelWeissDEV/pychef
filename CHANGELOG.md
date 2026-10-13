@@ -13,16 +13,28 @@ All notable changes to this project are documented here. Releases follow
   - `ExecutionPolicy.unrestricted()`: All resource caps lifted (`None`) and unrestricted network access.
   - `ExecutionPolicy.permissive()`: Legacy profile preserving backwards-compatibility with open public network.
   - Explicit `None` disables any numeric budget without falling back to internal defaults.
+  - Fixed `ExecutionPolicy.with_overrides()` to reliably preserve `None` values and properly synchronize with `NetworkPolicy`.
 - **Granular Network Control & SSRF Protection**:
-  - `NetworkPolicy` with modes `disabled`, `public_only`, and `unrestricted`.
-  - Configurable `allowed_hosts`, `denied_hosts`, `allowed_subnets`, `denied_subnets`, `allowed_ports`, `denied_ports`, and `allowed_schemes`.
+  - `NetworkPolicy` as the single source of truth with modes `disabled`, `public_only`, and `unrestricted`.
+  - Strict host normalization (case-folding, trailing-dot removal, IDNA/Punycode encoding).
+  - Strict deny-over-allow precedence across hosts and subnets.
+  - Configurable `allowed_hosts`, `denied_hosts`, `allowed_subnets`, `denied_subnets`, `allowed_ports`, `denied_ports`, `allowed_schemes`, `timeout_seconds`, and `max_redirects`.
   - DNS pinning directly into socket connections to prevent DNS rebinding attacks.
   - Explicit bypass of environment proxies (`HTTP_PROXY`) to enforce destination checks.
-- **Worker Process Isolation**:
+- **Worker Process Isolation & Platform Awareness**:
   - `IsolatedWorker` and `bake_isolated()` executing recipes in isolated subprocesses using `spawn` context.
-  - Applies OS-level `setrlimit` address space constraints on POSIX systems where supported.
-  - Hard deadline process termination and OOM / crash recovery (`ExecutionLimitError`).
-  - Integrated into `bake(..., isolated=True)` and `Chef`.
+  - Explicit distinction between cooperative in-process data budgets and OS-level address space limits (`hard_memory_limit_bytes`).
+  - Added `IsolatedWorker.is_hard_memory_limit_supported()`; unsupported platforms fail honestly with actionable guidance.
+  - Zombie-free process reaping lifecycle and clean serialization of unpicklable child exceptions.
+- **Pipeline Execution Consistency & Bounded Tracing**:
+  - Unified `Pipeline.trace()` under `active_policy` and `ExecutionContext` identically to `transform()`.
+  - Bounded trace buffers honoring `policy.max_trace_bytes` and added preview truncation (`max_preview_bytes`).
+- **Resource Hardening & Error Sanitization**:
+  - Included merge delimiter byte length in `Fork` accumulated output size tracking.
+  - Early output size checking on `Subsection` prefix, parts, and suffix.
+  - Sanitized `OperationError` exception strings against secret leakage (keys, passphrases, IVs, salts) with root-cause preservation via `__cause__`.
+- **Registry & Spec Isolation**:
+  - Enabled lazy loading into separate `OperationRegistry` instances with full override isolation from the global registry.
 - **On-Demand Lazy Loading**:
   - Registry lazily imports individual operation modules only when requested, drastically improving initial import times and reducing memory footprints.
   - `by_operation` module supports dynamic `__getattr__` and `load_all()`.

@@ -18,7 +18,7 @@ from pychef import (
     Recipe,
     bake,
 )
-from pychef.execution import ExecutionContext
+from pychef.execution import ExecutionContext, NetworkPolicy
 from pychef.recipe import _binary_delimiter
 
 FORK = {"op": "Fork", "args": ["\n", "\n", False]}
@@ -49,6 +49,62 @@ def test_policy_profiles() -> None:
     assert ExecutionPolicy.permissive().allow_network is True
     untrusted = ExecutionPolicy.untrusted()
     assert not untrusted.allow_network and untrusted.max_steps is not None
+    safe_with_unrestricted = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted())
+    assert safe_with_unrestricted.network.mode == "unrestricted"
+    assert safe_with_unrestricted.allow_network is True
+
+
+def test_policy_with_overrides_network_source_of_truth() -> None:
+    safe = ExecutionPolicy.safe()
+    assert safe.network.mode == "disabled"
+    assert safe.allow_network is False
+
+    overridden = safe.with_overrides(network=NetworkPolicy.unrestricted())
+    assert overridden.network.mode == "unrestricted"
+    assert overridden.allow_network is True
+
+    unrestricted = ExecutionPolicy.unrestricted()
+    assert unrestricted.network.mode == "unrestricted"
+    assert unrestricted.allow_network is True
+
+    locked = unrestricted.with_overrides(network=NetworkPolicy.disabled())
+    assert locked.network.mode == "disabled"
+    assert locked.allow_network is False
+
+
+def test_policy_with_overrides_none_and_large_limits() -> None:
+    safe = ExecutionPolicy.safe()
+    # Explicit None must NOT fall back to safe() default (512 MiB)
+    unlimited_mem = safe.with_overrides(max_memory_bytes=None)
+    assert unlimited_mem.max_memory_bytes is None
+
+    gigabytes_64 = 64 * 1024**3
+    large_mem = safe.with_overrides(max_memory_bytes=gigabytes_64)
+    assert large_mem.max_memory_bytes == gigabytes_64
+
+    # max_steps override to None
+    untrusted = ExecutionPolicy.untrusted()
+    assert untrusted.max_steps == 10000
+    unlimited_steps = untrusted.with_overrides(max_steps=None)
+    assert unlimited_steps.max_steps is None
+
+
+def test_policy_backward_compatible_allow_network_and_conflicts() -> None:
+    policy = ExecutionPolicy(allow_network=True)
+    assert policy.allow_network is True
+    assert policy.network.mode == "public_only"
+
+    # Conflicting configuration raises ValueError
+    with pytest.raises(ValueError, match="Conflicting network configuration"):
+        ExecutionPolicy(allow_network=True, network=NetworkPolicy.disabled())
+
+    with pytest.raises(ValueError, match="Conflicting network configuration"):
+        ExecutionPolicy(allow_network=False, network=NetworkPolicy.unrestricted())
+
+    # with_overrides with allow_network
+    toggled = ExecutionPolicy.safe().with_overrides(allow_network=True)
+    assert toggled.allow_network is True
+    assert toggled.network.mode == "public_only"
 
 
 def test_policy_and_context_are_mutually_exclusive() -> None:
@@ -82,6 +138,29 @@ def test_output_limit_applies_to_fork_merge() -> None:
     recipe = [FORK, {"op": "To Hex", "args": ["None"]}, MERGE]
     with pytest.raises(ExecutionLimitError):
         bake("aa\nbb\ncc", recipe, policy=ExecutionPolicy(max_output_bytes=8))
+
+
+def test_output_limit_accounts_for_large_merge_delimiters() -> None:
+    # Parts are small (1 byte each), but delimiter is 100 bytes
+    large_delimiter = "=" * 100
+    fork_step = {"op": "Fork", "args": ["\n", large_delimiter, False]}
+    recipe = [fork_step, "To Upper case", MERGE]
+    with pytest.raises(ExecutionLimitError) as info:
+        bake("a\nb", recipe, policy=ExecutionPolicy(max_output_bytes=50))
+    assert info.value.limit == "max_output_bytes"
+
+
+def test_output_limit_applies_to_subsection_prefix_suffix() -> None:
+    # Prefix and suffix bytes must count towards output budget
+    sub = {"op": "Subsection", "args": ["x", True, False, False]}
+    recipe = [sub, "To Upper case", MERGE]
+    with pytest.raises(ExecutionLimitError) as info:
+        bake(
+            "prefix_long_" * 10 + "x" + "suffix_long_" * 10,
+            recipe,
+            policy=ExecutionPolicy(max_output_bytes=50),
+        )
+    assert info.value.limit == "max_output_bytes"
 
 
 def test_step_budget_counts_all_steps() -> None:
@@ -262,6 +341,21 @@ def test_error_messages_do_not_leak_arguments() -> None:
         )
     assert secret not in str(info.value)
     assert secret not in json.dumps(info.value.to_dict())
+
+
+def test_error_messages_sanitize_exceptions_containing_secret_argument() -> None:
+    secret_pass = "MySecretPassphrase123"
+    recipe = [
+        {
+            "op": "PGP Decrypt",
+            "args": ["invalid-key", secret_pass],
+        }
+    ]
+    with pytest.raises(OperationError) as info:
+        bake("encrypted", recipe)
+    assert secret_pass not in str(info.value)
+    assert secret_pass not in info.value.message
+    assert secret_pass not in json.dumps(info.value.to_dict())
 
 
 # --- flow control --------------------------------------------------------------
