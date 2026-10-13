@@ -36,6 +36,21 @@ class RecipeStep:
 
 
 @dataclass(frozen=True, slots=True)
+class TraceStep:
+    """One recorded step.  Never contains data, only types and sizes."""
+
+    operation: str
+    step_index: int
+    branch_path: tuple[int, ...]
+    input_type: str
+    output_type: str
+    input_size: int
+    output_size: int
+    duration_ms: float
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class BakeResult:
     """Detailed result returned by :meth:`Chef.bake_result`."""
 
@@ -44,3 +59,4 @@ class BakeResult:
     progress: int
     duration_ms: float
     error: Exception | None = None
+    trace: tuple[TraceStep, ...] = ()

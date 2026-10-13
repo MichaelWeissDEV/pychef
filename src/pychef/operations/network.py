@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import re
 import socket
+import ssl
 import urllib.error
 import urllib.request
 from http.client import HTTPMessage
 from typing import IO, Any, cast
 from urllib.parse import parse_qs, urlencode, urlparse
 
+from ..errors import OperationPermissionError
+from ..execution import current_policy
 from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, char_rep, require_int
 
 _HTTP_METHODS = {"GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "CONNECT", "TRACE", "OPTIONS"}
 _MAX_HTTP_RESPONSE = 64 * 1024 * 1024
+_HTTP_TIMEOUT = 30.0
 
 _IPV4_CANDIDATE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?(?![\d.])")
 _IPV6_CANDIDATE = re.compile(
@@ -316,30 +321,128 @@ def parse_uri(value: Data, _args: Args) -> str:
     return output
 
 
-def _safe_public_url(value: str) -> str:
+def _is_public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return whether *address* is a globally routable unicast address.
+
+    IPv4-mapped (``::ffff:a.b.c.d``), IPv4-compatible-looking, 6to4 and NAT64
+    wrappers are unwrapped so that they cannot smuggle a private IPv4 target.
+    """
+    if isinstance(address, ipaddress.IPv6Address):
+        embedded: list[ipaddress.IPv4Address] = []
+        if address.ipv4_mapped is not None:
+            embedded.append(address.ipv4_mapped)
+        if address.sixtofour is not None:
+            embedded.append(address.sixtofour)
+        if address in ipaddress.ip_network("64:ff9b::/96"):
+            embedded.append(ipaddress.IPv4Address(int(address) & 0xFFFFFFFF))
+        if address.teredo is not None:
+            embedded.extend(address.teredo)
+        if any(not _is_public(item) for item in embedded):
+            return False
+    return address.is_global and not address.is_multicast
+
+
+def _parse_http_url(value: str) -> tuple[str, str, int]:
+    """Validate the syntax of *value* and return ``(scheme, hostname, port)``."""
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("URL must use HTTP or HTTPS and contain a hostname")
-    if parsed.username or parsed.password:
+    if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
         raise ValueError("Credentials embedded in URLs are not permitted")
     try:
-        addresses = {
-            ipaddress.ip_address(item[4][0])
-            for item in socket.getaddrinfo(
-                parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM
-            )
-        }
-    except socket.gaierror as exc:
-        raise ValueError(f"Could not resolve HTTP host: {parsed.hostname}") from exc
-    for address in addresses:
-        if not address.is_global:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("URL contains an invalid port") from exc
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
+    if not 1 <= port <= 65535:
+        raise ValueError("URL contains an invalid port")
+    return parsed.scheme, parsed.hostname, port
+
+
+def _resolve_public(host: str, port: int) -> list[str]:
+    """Resolve *host* once and return only verified public addresses.
+
+    Raises ``ValueError`` if resolution fails, yields nothing, or *any* returned
+    address is non-global (a mixed answer is rejected as suspicious).
+    """
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except (socket.gaierror, UnicodeError) as exc:
+        raise ValueError(f"Could not resolve HTTP host: {host}") from exc
+    addresses: list[str] = []
+    for info in infos:
+        text = str(info[4][0]).split("%", 1)[0]
+        if not _is_public(ipaddress.ip_address(text)):
             raise ValueError(
                 "Requests to local, private, reserved, or non-global addresses are blocked"
             )
+        if text not in addresses:
+            addresses.append(text)
+    if not addresses:
+        raise ValueError(f"Could not resolve HTTP host: {host}")
+    return addresses
+
+
+def _safe_public_url(value: str) -> str:
+    """Pre-flight validation of *value* (syntax and current DNS answer).
+
+    This check alone is subject to DNS rebinding.  The actual connection is made
+    by :class:`_PinnedConnectionMixin`, which re-validates the addresses it
+    really connects to.
+    """
+    _, host, port = _parse_http_url(value)
+    _resolve_public(host, port)
     return value
 
 
+def _connect_pinned(host: str, port: int, timeout: float | None) -> socket.socket:
+    """Connect to a validated address; resolution and validation happen right here."""
+    last_error: OSError | None = None
+    for address in _resolve_public(host, port):
+        try:
+            return socket.create_connection((address, port), timeout)
+        except OSError as exc:
+            last_error = exc
+    raise ConnectionError(f"Could not connect to {host}:{port}") from last_error
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """HTTP connection that only ever connects to the addresses it validated."""
+
+    def connect(self) -> None:
+        self.sock = _connect_pinned(self.host, self.port, self.timeout)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection with pinned addresses; TLS still verifies the hostname."""
+
+    def connect(self) -> None:
+        sock = _connect_pinned(self.host, self.port, self.timeout)
+        context = cast(ssl.SSLContext, getattr(self, "_context"))  # noqa: B009
+        self.sock = context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(_PinnedHTTPConnection, req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self) -> None:
+        super().__init__(context=ssl.create_default_context())
+
+    def https_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(
+            _PinnedHTTPSConnection,
+            req,
+            context=getattr(self, "_context"),  # noqa: B009
+        )
+
+
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    max_redirections = 5
+
     def redirect_request(
         self,
         req: urllib.request.Request,
@@ -349,18 +452,34 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         headers: HTTPMessage,
         newurl: str,
     ) -> urllib.request.Request | None:
-        _safe_public_url(newurl)
+        _parse_http_url(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _require_network_permission() -> None:
+    policy = current_policy()
+    if policy is not None and not policy.allow_network:
+        raise OperationPermissionError(
+            "HTTP request", "network access is not permitted by the execution policy"
+        )
 
 
 def _request(
     url: str, method: str, headers: dict[str, str], body: bytes | None
 ) -> tuple[int, str, HTTPMessage, bytes]:
-    _safe_public_url(url)
+    _require_network_permission()
+    _parse_http_url(url)
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
-    opener = urllib.request.build_opener(_SafeRedirectHandler())
+    # An empty ProxyHandler ignores HTTP(S)_PROXY: a proxy would resolve and
+    # connect on our behalf and bypass the address check.
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _PinnedHTTPHandler(),
+        _PinnedHTTPSHandler(),
+        _SafeRedirectHandler(),
+    )
     try:
-        response: Any = opener.open(request, timeout=30)
+        response: Any = opener.open(request, timeout=_HTTP_TIMEOUT)
     except urllib.error.HTTPError as exc:
         response = exc
     with response:

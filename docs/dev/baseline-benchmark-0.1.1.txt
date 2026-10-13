@@ -1,0 +1,21 @@
+  1KiB base64 enc              109.0 MiB/s
+  1KiB base64 roundtrip         22.9 MiB/s
+  1KiB hex roundtrip             6.5 MiB/s
+  1KiB xor                      13.7 MiB/s
+  1KiB sha-256                   0.6 MiB/s
+  1KiB 10 steps                  1.3 MiB/s
+  1KiB 100 steps                 0.1 MiB/s
+ 64KiB base64 enc              539.2 MiB/s
+ 64KiB base64 roundtrip         31.3 MiB/s
+ 64KiB hex roundtrip             7.1 MiB/s
+ 64KiB xor                      14.4 MiB/s
+ 64KiB sha-256                   0.6 MiB/s
+ 64KiB 10 steps                  1.4 MiB/s
+ 64KiB 100 steps                 0.1 MiB/s
+  4MiB base64 enc              582.3 MiB/s
+  4MiB base64 roundtrip         31.2 MiB/s
+  4MiB hex roundtrip             6.7 MiB/s
+  4MiB xor                      14.4 MiB/s
+  4MiB sha-256                   0.6 MiB/s
+  4MiB 10 steps                  1.4 MiB/s
+20k small values via Pipeline.transform_many: 14.1 ms

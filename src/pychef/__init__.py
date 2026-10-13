@@ -51,7 +51,17 @@ from .ctf import (
     unpack,
     xor_bytes,
 )
-from .errors import OperationError, PyChefError, RecipeError, UnknownOperationError
+from .errors import (
+    ExecutionLimitError,
+    ExecutionTimeoutError,
+    InvalidOperationArgumentsError,
+    OperationError,
+    OperationPermissionError,
+    PyChefError,
+    RecipeError,
+    UnknownOperationError,
+)
+from .execution import ExecutionContext, ExecutionPolicy
 from .packets import (
     json_safe,
     packet_json,
@@ -72,15 +82,21 @@ from .packets import (
 from .pipeline import Pipeline, PipelineTrace
 from .recipe import Chef, Recipe, bake
 from .registry import Operation, OperationRegistry, registry
-from .types import BakeResult, Data, RecipeConfig, RecipeStep
+from .types import BakeResult, Data, RecipeConfig, RecipeStep, TraceStep
 
 __all__ = [
     "BakeResult",
     "Chef",
     "CompatibilityReport",
     "Data",
+    "ExecutionContext",
+    "ExecutionLimitError",
+    "ExecutionPolicy",
+    "ExecutionTimeoutError",
+    "InvalidOperationArgumentsError",
     "Operation",
     "OperationError",
+    "OperationPermissionError",
     "OperationRegistry",
     "Pipeline",
     "PipelineTrace",
@@ -89,6 +105,7 @@ __all__ = [
     "RecipeConfig",
     "RecipeError",
     "RecipeStep",
+    "TraceStep",
     "UnknownOperationError",
     "aes_decrypt",
     "aes_encrypt",

@@ -39,3 +39,11 @@ All notable changes to this project are documented here. Releases follow
 [Unreleased]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/MichaelWeissDEV/pychef/releases/tag/v0.1.0
+
+## Unreleased
+- Added `ExecutionPolicy` / `ExecutionContext`, structured errors (`error_code`, `step_index`, ...).
+- Network operations: pinned, re-validated connections; proxies ignored; blocked when a policy
+  without `allow_network` is used. Calls without a policy keep the previous behaviour.
+- Fixed non-ASCII Fork delimiters, empty Fork delimiter, default HTTP port validation.
+- Behaviour change: negative or non-integer jump limits now raise `InvalidOperationArgumentsError`;
+  invalid regexes in flow control raise it instead of `re.error`.
