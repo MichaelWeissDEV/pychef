@@ -7,11 +7,13 @@ import pickle
 import sys
 from contextlib import suppress
 from time import perf_counter
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from .errors import ExecutionLimitError, ExecutionTimeoutError, PyChefError
 from .execution import ExecutionContext, ExecutionPolicy
 from .types import BakeResult, Data, RecipeConfig
+
+_UNSET: Any = object()
 
 
 def _worker_entry(
@@ -147,24 +149,31 @@ class IsolatedWorker:
         recipe: RecipeConfig | Any,
         *,
         policy: ExecutionPolicy | None = None,
-        hard_memory_limit_bytes: int | None = None,
+        hard_memory_limit_bytes: int | object | None = _UNSET,
         return_type: Literal["str", "bytes"] | None = None,
         trace: bool = False,
     ) -> BakeResult:
         if self._closed:
             raise RuntimeError("IsolatedWorker is closed")
 
-        eff_hard_limit = (
-            hard_memory_limit_bytes
-            if hard_memory_limit_bytes is not None
-            else self.hard_memory_limit_bytes
-        )
-        if eff_hard_limit is not None and not self.is_hard_memory_limit_supported():
-            raise RuntimeError(
-                f"Hard process memory limits are not supported on platform '{sys.platform}'. "
-                "Use cooperative max_memory_bytes in ExecutionPolicy or run inside "
-                "cgroups/containers."
-            )
+        if hard_memory_limit_bytes is _UNSET:
+            eff_hard_limit = self.hard_memory_limit_bytes
+        else:
+            eff_hard_limit = cast("int | None", hard_memory_limit_bytes)
+
+        if eff_hard_limit is not None:
+            if (
+                isinstance(eff_hard_limit, bool)
+                or not isinstance(eff_hard_limit, int)
+                or eff_hard_limit <= 0
+            ):
+                raise ValueError("hard_memory_limit_bytes must be a positive integer")
+            if not self.is_hard_memory_limit_supported():
+                raise RuntimeError(
+                    f"Hard process memory limits are not supported on platform '{sys.platform}'. "
+                    "Use cooperative max_memory_bytes in ExecutionPolicy or run inside "
+                    "cgroups/containers."
+                )
 
         eff_policy = policy or self.policy
         # Extract serializable step definitions if Recipe instance
@@ -176,6 +185,7 @@ class IsolatedWorker:
             self.timeout if self.timeout is not None else eff_policy.cooperative_deadline_seconds
         )
 
+        started = perf_counter()
         process = ctx.Process(
             target=_worker_entry,
             args=(child_conn, value, config, eff_policy, eff_hard_limit, return_type, trace),
@@ -185,11 +195,12 @@ class IsolatedWorker:
         child_conn.close()
 
         payload: dict[str, Any] | None = None
-        started = perf_counter()
 
         try:
             if timeout is not None:
-                if parent_conn.poll(timeout):
+                elapsed = perf_counter() - started
+                remaining = max(0.0, timeout - elapsed)
+                if parent_conn.poll(remaining):
                     payload = parent_conn.recv()
                 else:
                     self._terminate_process(process)
@@ -199,7 +210,12 @@ class IsolatedWorker:
             else:
                 payload = parent_conn.recv()
 
-            process.join(timeout=2.0)
+            join_timeout = (
+                max(0.1, min(2.0, timeout - (perf_counter() - started)))
+                if timeout is not None
+                else 2.0
+            )
+            process.join(timeout=join_timeout)
         except EOFError:
             process.join(timeout=1.0)
             exitcode = process.exitcode

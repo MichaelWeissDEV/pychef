@@ -59,7 +59,7 @@ from .errors import (
     RecipeError,
     UnknownOperationError,
 )
-from .execution import ExecutionContext, ExecutionPolicy, NetworkPolicy
+from .execution import ExecutionContext, ExecutionPolicy, NetworkPolicy, normalize_host
 from .packets import (
     json_safe,
     packet_json,
@@ -132,6 +132,7 @@ __all__ = [
     "list_operation_specs",
     "list_operations",
     "md5",
+    "normalize_host",
     "p8",
     "p16",
     "p16be",

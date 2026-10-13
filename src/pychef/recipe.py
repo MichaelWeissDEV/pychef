@@ -449,9 +449,16 @@ def _finditer(
 def _jump_limit(step: RecipeStep, position: int, index: int, ctx: ExecutionContext) -> int:
     raw = step.args[position] if len(step.args) > position else 10
     try:
-        if isinstance(raw, bool):
-            raise ValueError("boolean")
-        maximum = int(raw)
+        if isinstance(raw, (bool, float)):
+            raise ValueError("boolean or float")
+        if isinstance(raw, str):
+            if "." in raw or "e" in raw.lower():
+                raise ValueError("float string")
+            maximum = int(raw)
+        elif isinstance(raw, int):
+            maximum = raw
+        else:
+            raise TypeError("unsupported type")
     except (TypeError, ValueError) as exc:
         raise InvalidOperationArgumentsError(
             step.op,
@@ -539,7 +546,21 @@ class Chef:
             from .worker import IsolatedWorker
 
             worker = IsolatedWorker(policy=eff_policy)
-            return worker.run(value, recipe, return_type=return_type, trace=trace)
+            started = perf_counter()
+            try:
+                return worker.run(value, recipe, return_type=return_type, trace=trace)
+            except Exception as exc:
+                if raise_errors:
+                    raise
+                duration_ms = (perf_counter() - started) * 1000
+                return BakeResult(
+                    result=value,
+                    type="bytes" if isinstance(value, bytes) else "string",
+                    progress=0,
+                    duration_ms=duration_ms,
+                    error=exc,
+                    trace=(),
+                )
 
         parsed = recipe if isinstance(recipe, Recipe) else Recipe(recipe)
         started = perf_counter()

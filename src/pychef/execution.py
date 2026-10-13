@@ -32,12 +32,29 @@ NETWORK_OPERATIONS = frozenset({"HTTP request", "DNS over HTTPS"})
 _TRACE_ENTRY_OVERHEAD = 192  # conservative estimate of bytes per recorded trace step
 
 
-def _normalize_host(host: str) -> str:
-    text = str(host).strip().rstrip(".").lower()
+def normalize_host(host: str) -> str:
+    """Canonicalize a hostname or IP address literal.
+
+    Strips surrounding whitespace and IPv6 brackets, removes trailing dots,
+    canonicalizes IP literals via :mod:`ipaddress`, and applies IDNA encoding
+    with lowercasing to domain names.
+    """
+    text = str(host).strip()
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1].strip()
+    text = text.rstrip(".")
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        pass
+    text = text.lower()
     try:
         return text.encode("idna").decode("ascii")
     except (UnicodeError, ValueError):
         return text
+
+
+_normalize_host = normalize_host
 
 
 def _is_public(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -161,51 +178,104 @@ class NetworkPolicy:
         """Return a new immutable NetworkPolicy with the specified overrides."""
         return replace(self, **kwargs)
 
+    def check_destination(
+        self,
+        host: str,
+        ip: ipaddress.IPv4Address | ipaddress.IPv6Address | str | None = None,
+        port: int | None = None,
+        scheme: str | None = None,
+    ) -> tuple[bool, str]:
+        """Check whether a destination (host, IP, port, scheme) is permitted.
+
+        Returns a tuple of ``(allowed, reason)``.
+        Strict deny-over-allow precedence is enforced.
+        """
+        if scheme is not None:
+            norm_scheme = str(scheme).lower().strip()
+            if norm_scheme not in self.allowed_schemes:
+                return False, f"Scheme '{norm_scheme}' is not permitted by network policy"
+
+        if port is not None:
+            if not (1 <= port <= 65535):
+                return False, f"Port {port} out of range 1..65535"
+            if port in self.denied_ports:
+                return False, f"Port {port} is explicitly denied by network policy"
+            if self.allowed_ports is not None and port not in self.allowed_ports:
+                return False, f"Port {port} is not in allowed ports"
+
+        norm_host = normalize_host(host)
+
+        # Check if the host itself is explicitly denied
+        if norm_host in self.denied_hosts:
+            return False, f"Host '{norm_host}' is explicitly denied by network policy"
+
+        # Determine target IP address object if provided or if host is an IP literal
+        parsed_ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None
+        if ip is not None:
+            if isinstance(ip, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+                parsed_ip = ip
+            else:
+                try:
+                    parsed_ip = ipaddress.ip_address(normalize_host(str(ip)))
+                except ValueError:
+                    return False, f"Invalid IP address: {ip}"
+        else:
+            try:
+                parsed_ip = ipaddress.ip_address(norm_host)
+            except ValueError:
+                parsed_ip = None
+
+        if parsed_ip is not None:
+            ip_text = str(parsed_ip)
+            if ip_text in self.denied_hosts:
+                return False, f"IP '{ip_text}' is explicitly denied by network policy"
+            for denied_sub in self.denied_subnets:
+                if parsed_ip in ipaddress.ip_network(denied_sub, strict=False):
+                    return False, f"IP '{ip_text}' is in denied subnet '{denied_sub}'"
+
+        # If not denied, check explicit allow rules
+        host_explicitly_allowed = norm_host in self.allowed_hosts
+
+        ip_explicitly_allowed = False
+        if parsed_ip is not None:
+            ip_text = str(parsed_ip)
+            if ip_text in self.allowed_hosts or any(
+                parsed_ip in ipaddress.ip_network(allowed_sub, strict=False)
+                for allowed_sub in self.allowed_subnets
+            ):
+                ip_explicitly_allowed = True
+
+        if host_explicitly_allowed or ip_explicitly_allowed:
+            return True, "Destination explicitly allowed"
+
+        # Mode fallbacks
+        if self.mode == "disabled":
+            return False, "network access is not permitted by the execution policy"
+
+        if self.mode == "unrestricted":
+            return True, "Permitted under unrestricted network policy"
+
+        if self.mode == "public_only":
+            if parsed_ip is not None:
+                if not _is_public(parsed_ip):
+                    return (
+                        False,
+                        "Requests to local, private, reserved, or non-global addresses are blocked",
+                    )
+                return True, "Permitted public address"
+            return True, "Hostname permitted for public DNS resolution"
+
+        return False, "Destination blocked"
+
     def is_host_allowed(self, host: str) -> bool:
         """Check if a hostname is permitted under this policy."""
-        norm = _normalize_host(host)
-        if norm in self.denied_hosts:
-            return False
-        if norm in self.allowed_hosts:
-            return True
-        if self.mode == "disabled":
-            return False
-        if self.mode == "unrestricted":
-            return True
-        # For public_only: check if host is an IP address literal
-        try:
-            ip = ipaddress.ip_address(norm)
-            return self.is_ip_allowed(ip)
-        except ValueError:
-            return True
+        allowed, _ = self.check_destination(host=host)
+        return allowed
 
     def is_ip_allowed(self, ip: ipaddress.IPv4Address | ipaddress.IPv6Address | str) -> bool:
         """Check if an IP address is permitted under this policy."""
-        if isinstance(ip, str):
-            try:
-                addr = ipaddress.ip_address(ip)
-            except ValueError:
-                return False
-        else:
-            addr = ip
-        text = str(addr)
-        if text in self.denied_hosts:
-            return False
-        for denied_sub in self.denied_subnets:
-            if addr in ipaddress.ip_network(denied_sub, strict=False):
-                return False
-        if text in self.allowed_hosts:
-            return True
-        for allowed_sub in self.allowed_subnets:
-            if addr in ipaddress.ip_network(allowed_sub, strict=False):
-                return True
-        if self.mode == "disabled":
-            return False
-        if self.mode == "unrestricted":
-            return True
-        if self.mode == "public_only":
-            return _is_public(addr)
-        return False
+        allowed, _ = self.check_destination(host=str(ip), ip=ip)
+        return allowed
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -374,11 +444,61 @@ class ExecutionPolicy:
         """Return a new immutable ExecutionPolicy with specified overrides."""
         if "allow_network" in kwargs:
             allow = kwargs.pop("allow_network")
-            if "network" not in kwargs:
+            if not isinstance(allow, bool):
+                raise TypeError("allow_network must be a bool")
+            if "network" in kwargs:
+                net = kwargs["network"]
+                if net is not None:
+                    has_net = (
+                        net.mode != "disabled"
+                        or bool(net.allowed_hosts)
+                        or bool(net.allowed_subnets)
+                    )
+                    if allow and not has_net:
+                        raise ValueError(
+                            "Conflicting network configuration: allow_network=True "
+                            "but network policy is disabled"
+                        )
+                    if not allow and has_net:
+                        raise ValueError(
+                            "Conflicting network configuration: allow_network=False "
+                            "but network policy permits network"
+                        )
+            else:
                 kwargs["network"] = (
                     NetworkPolicy.public_only() if allow else NetworkPolicy.disabled()
                 )
-        return replace(self, **kwargs)
+
+        allowed_fields = {
+            "max_memory_bytes",
+            "max_input_bytes",
+            "max_output_bytes",
+            "max_steps",
+            "max_branches",
+            "max_recursion_depth",
+            "max_trace_bytes",
+            "cooperative_deadline_seconds",
+            "network",
+        }
+        unknown = set(kwargs) - allowed_fields
+        if unknown:
+            raise TypeError(
+                f"Unexpected keyword argument(s) for ExecutionPolicy: {sorted(unknown)}"
+            )
+
+        return ExecutionPolicy(
+            max_memory_bytes=kwargs.get("max_memory_bytes", self.max_memory_bytes),
+            max_input_bytes=kwargs.get("max_input_bytes", self.max_input_bytes),
+            max_output_bytes=kwargs.get("max_output_bytes", self.max_output_bytes),
+            max_steps=kwargs.get("max_steps", self.max_steps),
+            max_branches=kwargs.get("max_branches", self.max_branches),
+            max_recursion_depth=kwargs.get("max_recursion_depth", self.max_recursion_depth),
+            max_trace_bytes=kwargs.get("max_trace_bytes", self.max_trace_bytes),
+            cooperative_deadline_seconds=kwargs.get(
+                "cooperative_deadline_seconds", self.cooperative_deadline_seconds
+            ),
+            network=kwargs.get("network", self.network),
+        )
 
 
 def data_size(value: Data | int) -> int:

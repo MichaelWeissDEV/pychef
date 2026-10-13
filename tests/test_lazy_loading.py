@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+import pytest
+
 from pychef import list_operations, registry
 from pychef.operations import by_operation
 
@@ -78,3 +80,20 @@ def test_custom_registry_lazy_loads_and_isolates() -> None:
     custom_override.register(Operation(name="To Hex", function=custom_hex))
     assert custom_override.get("To Hex").run("test") == "custom"
     assert registry.get("To Hex").run("test") != "custom"
+
+
+def test_custom_registry_empty_manifest_strictly_isolated() -> None:
+    from pychef import OperationRegistry, UnknownOperationError
+
+    # Ensure "To Hex" is loaded in global registry
+    _ = registry.get("To Hex")
+    assert "To Hex" in registry._operations
+
+    # An empty manifest registry must NEVER leak or fall back to global registry
+    empty_reg = OperationRegistry(manifest={})
+    assert len(empty_reg) == 0
+    assert empty_reg.names() == ()
+    assert "To Hex" not in empty_reg
+
+    with pytest.raises(UnknownOperationError, match="unknown operation: To Hex"):
+        empty_reg.get("To Hex")

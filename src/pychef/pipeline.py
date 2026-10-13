@@ -27,6 +27,30 @@ def _join_values(values: Sequence[Any], separator: str | bytes) -> str | bytes:
     return separator.join(values)
 
 
+def _measure_trace_size(val: Any) -> int:
+    if isinstance(val, bytes):
+        return len(val)
+    if isinstance(val, str):
+        return len(val.encode("utf-8", "surrogatepass"))
+    try:
+        return len(val)
+    except (TypeError, Exception):
+        return 0
+
+
+def _truncate_preview(val: Any, limit: int) -> tuple[Any, bool]:
+    if isinstance(val, str):
+        raw = val.encode("utf-8", "surrogatepass")
+        if len(raw) > limit:
+            return raw[:limit].decode("utf-8", "ignore"), True
+        return val, False
+    if isinstance(val, bytes):
+        if len(val) > limit:
+            return val[:limit], True
+        return val, False
+    return val, False
+
+
 @dataclass(frozen=True, slots=True)
 class PipelineTrace:
     """The input and output captured for one pipeline stage."""
@@ -213,6 +237,7 @@ class Pipeline:
                     raise
                 if isinstance(before, (str, bytes)) and isinstance(value, (str, bytes)):
                     context.record(stage.name, index, before, value, started, None)
+                if isinstance(value, (str, bytes)):
                     context.check_output(value, stage.name, index)
             return value
 
@@ -254,6 +279,13 @@ class Pipeline:
         :meth:`transform`. Intermediate trace sizes are bounded by
         ``policy.max_trace_bytes``.
         """
+        if max_preview_bytes is not None and (
+            isinstance(max_preview_bytes, bool)
+            or not isinstance(max_preview_bytes, int)
+            or max_preview_bytes < 0
+        ):
+            raise ValueError("max_preview_bytes must be None or a non-negative integer")
+
         if context is None:
             context = ExecutionContext(policy=policy or ExecutionPolicy.safe(), trace_enabled=True)
         elif policy is not None and policy is not context.policy:
@@ -291,11 +323,12 @@ class Pipeline:
 
                 if isinstance(stage_input, (str, bytes)) and isinstance(value, (str, bytes)):
                     context.record(stage.name, index, stage_input, value, started, None)
+                if isinstance(value, (str, bytes)):
                     context.check_output(value, stage.name, index)
 
                 # Track size of inputs/outputs for trace bounding
-                in_size = len(stage_input) if isinstance(stage_input, (bytes, str)) else 0
-                out_size = len(value) if isinstance(value, (bytes, str)) else 0
+                in_size = _measure_trace_size(stage_input)
+                out_size = _measure_trace_size(value)
 
                 accumulated_trace_bytes += in_size + out_size + 64
                 if limit_trace_bytes is not None and accumulated_trace_bytes > limit_trace_bytes:
@@ -310,12 +343,9 @@ class Pipeline:
                 saved_out = value
                 truncated = False
                 if max_preview_bytes is not None:
-                    if isinstance(saved_in, (str, bytes)) and len(saved_in) > max_preview_bytes:
-                        saved_in = saved_in[:max_preview_bytes]
-                        truncated = True
-                    if isinstance(saved_out, (str, bytes)) and len(saved_out) > max_preview_bytes:
-                        saved_out = saved_out[:max_preview_bytes]
-                        truncated = True
+                    saved_in, in_trunc = _truncate_preview(stage_input, max_preview_bytes)
+                    saved_out, out_trunc = _truncate_preview(value, max_preview_bytes)
+                    truncated = in_trunc or out_trunc
 
                 trace.append(
                     PipelineTrace(

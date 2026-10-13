@@ -10,7 +10,14 @@ from typing import Any
 
 import pytest
 
-from pychef import ExecutionPolicy, NetworkPolicy, OperationError, OperationPermissionError, bake
+from pychef import (
+    ExecutionPolicy,
+    NetworkPolicy,
+    OperationError,
+    OperationPermissionError,
+    bake,
+    normalize_host,
+)
 from pychef.execution import active_policy
 from pychef.operations import network
 
@@ -365,3 +372,58 @@ def test_network_policy_factories_and_attributes() -> None:
     assert unrestricted.mode == "unrestricted"
     assert unrestricted.timeout_seconds is None
     assert unrestricted.max_redirects is None
+
+
+def test_normalize_host_comprehensive() -> None:
+    # Trailing dots, whitespace, casing
+    assert normalize_host("  EXAMPLE.COM.  ") == "example.com"
+    # Bracketed IPv6
+    assert normalize_host("[::1]") == "::1"
+    assert normalize_host("  [2001:0DB8::0001]  ") == "2001:db8::1"
+    # IPv4 literal
+    assert normalize_host("127.0.0.1.") == "127.0.0.1"
+    # IDNA internationalized domain
+    assert normalize_host("München.DE.") == "xn--mnchen-3ya.de"
+
+
+def test_check_destination_comprehensive() -> None:
+    # Scheme check
+    policy = NetworkPolicy(allowed_schemes=("https",))
+    allowed, reason = policy.check_destination("example.com", scheme="http")
+    assert allowed is False
+    assert "Scheme 'http' is not permitted" in reason
+
+    # Port checks
+    port_policy = NetworkPolicy.public_only(allowed_ports=(443,), denied_ports=(8080,))
+    assert port_policy.check_destination("example.com", port=443)[0] is True
+    assert port_policy.check_destination("example.com", port=80)[0] is False
+    assert port_policy.check_destination("example.com", port=8080)[0] is False
+    assert port_policy.check_destination("example.com", port=70000)[0] is False
+
+    # Strict deny over allow
+    conflict_policy = NetworkPolicy(
+        mode="public_only",
+        allowed_hosts=("conflict.test", "93.184.216.34"),
+        denied_hosts=("conflict.test", "93.184.216.34"),
+    )
+    assert conflict_policy.check_destination("conflict.test")[0] is False
+    assert conflict_policy.check_destination("conflict.test", ip="93.184.216.34")[0] is False
+
+    # Disabled mode with explicit allow
+    disabled = NetworkPolicy(mode="disabled", allowed_hosts=("safe.test",))
+    assert disabled.check_destination("safe.test")[0] is True
+    assert disabled.check_destination("other.test")[0] is False
+
+
+def test_http_request_with_trailing_dot_hostname(net: Net) -> None:
+    net.answers["example.test"] = [[PUBLIC_IP]]
+    # Normalization strips trailing dot so lookup succeeds
+    assert (
+        bake(
+            "",
+            [{"op": "HTTP request", "args": ["GET", "http://example.test.:80/"]}],
+            policy=ExecutionPolicy.permissive(),
+        )
+        == "hello"
+    )
+    assert net.resolutions == ["example.test"]

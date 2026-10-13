@@ -106,6 +106,27 @@ def test_policy_backward_compatible_allow_network_and_conflicts() -> None:
     assert toggled.allow_network is True
     assert toggled.network.mode == "public_only"
 
+    # with_overrides with conflicting allow_network and network raises ValueError
+    with pytest.raises(ValueError, match="Conflicting network configuration"):
+        ExecutionPolicy.safe().with_overrides(
+            allow_network=False, network=NetworkPolicy.unrestricted()
+        )
+
+    with pytest.raises(ValueError, match="Conflicting network configuration"):
+        ExecutionPolicy.safe().with_overrides(allow_network=True, network=NetworkPolicy.disabled())
+
+    # with_overrides non-boolean allow_network raises TypeError
+    with pytest.raises(TypeError, match="allow_network must be a bool"):
+        ExecutionPolicy.safe().with_overrides(allow_network="yes")
+
+    # with_overrides validates limits
+    with pytest.raises(ValueError, match="max_memory_bytes"):
+        ExecutionPolicy.safe().with_overrides(max_memory_bytes=-5)
+
+    # with_overrides preserves explicit None
+    cleared = ExecutionPolicy.safe().with_overrides(max_memory_bytes=None)
+    assert cleared.max_memory_bytes is None
+
 
 def test_policy_and_context_are_mutually_exclusive() -> None:
     context = ExecutionContext(policy=ExecutionPolicy())
@@ -411,7 +432,7 @@ def test_unknown_label_falls_through() -> None:
     assert bake("a", [{"op": "Jump", "args": ["nowhere", 3]}, "To Hex"]) == "61"
 
 
-@pytest.mark.parametrize("bad", [-1, "abc", None, True])
+@pytest.mark.parametrize("bad", [-1, "abc", None, True, 1.5, "1.5", -1.5])
 def test_invalid_jump_limits(bad: object) -> None:
     recipe = [{"op": "Label", "args": ["l"]}, {"op": "Jump", "args": ["l", bad]}]
     with pytest.raises(InvalidOperationArgumentsError) as info:

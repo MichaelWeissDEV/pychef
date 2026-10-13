@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Any, cast
 
 import pytest
 
@@ -198,3 +199,47 @@ def test_pipeline_trace_sizes_and_preview_truncation() -> None:
     assert trace[0].input_size == len("hello world")
     assert trace[1].truncated is True
     assert trace[1].output_size > 4
+
+
+def test_pipeline_output_limit_enforced_after_non_string_stage() -> None:
+    # A stage returning a non-string/bytes object, followed by a stage returning large bytes
+    pipeline = Pipeline().apply(lambda _val: {"size": 1000}).apply(lambda d: b"A" * d["size"])
+    policy = ExecutionPolicy(max_output_bytes=50)
+
+    # In transform()
+    with pytest.raises(ExecutionLimitError) as info:
+        pipeline.transform("start", policy=policy)
+    assert info.value.limit == "max_output_bytes"
+
+    # In trace()
+    with pytest.raises(ExecutionLimitError) as info_trace:
+        pipeline.trace("start", policy=policy)
+    assert info_trace.value.limit == "max_output_bytes"
+
+
+def test_pipeline_trace_preview_bounds_and_zero() -> None:
+    pipeline = Pipeline().to_hex()
+
+    # max_preview_bytes = 0
+    trace_zero = pipeline.trace("hello", max_preview_bytes=0)
+    assert trace_zero[0].input == ""
+    assert trace_zero[0].truncated is True
+    assert trace_zero[0].output == ""
+    assert trace_zero[0].input_size == 5
+
+    # max_preview_bytes negative raises ValueError
+    with pytest.raises(ValueError, match="max_preview_bytes"):
+        pipeline.trace("hello", max_preview_bytes=-1)
+
+    with pytest.raises(ValueError, match="max_preview_bytes"):
+        pipeline.trace("hello", max_preview_bytes=cast(Any, "ten"))
+
+
+def test_pipeline_trace_multibyte_utf8_truncation() -> None:
+    # "münchen" in UTF-8: 'm' (1 byte), 'ü' (2 bytes: \xc3\xbc), 'n' ...
+    # Slicing at 2 bytes cuts the 'ü' in half; our handler drops partial bytes safely
+    pipeline = Pipeline().apply(lambda x: x)
+    trace = pipeline.trace("münchen", max_preview_bytes=2)
+    assert trace[0].input == "m"  # only 1 complete character fits in 2 bytes
+    assert trace[0].truncated is True
+    assert trace[0].input_size == len("münchen".encode())

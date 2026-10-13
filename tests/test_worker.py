@@ -127,3 +127,26 @@ def test_isolated_worker_unpicklable_exception_handled(monkeypatch: pytest.Monke
     assert conn.sent[0]["success"] is False
     assert conn.sent[0]["error"]["__unpicklable__"] is True
     assert conn.sent[0]["error"]["type"] == "UnpicklableError"
+
+
+def test_isolated_worker_override_hard_limit_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Set unsupported platform
+    monkeypatch.setattr(
+        IsolatedWorker, "is_hard_memory_limit_supported", classmethod(lambda cls: False)
+    )
+    # A worker created with None can be explicitly run with hard_memory_limit_bytes=None
+    worker = IsolatedWorker()
+    res = worker.run("abc", ["To Hex"], hard_memory_limit_bytes=None)
+    assert res.result == "61 62 63"
+
+
+def test_chef_bake_result_isolated_raise_errors_false() -> None:
+    from pychef import Chef
+
+    chef = Chef(isolated=True)
+    # Exceed step memory limit
+    policy = ExecutionPolicy(max_memory_bytes=10)
+    result = chef.bake_result("A" * 1000, ["To Hex"], policy=policy, raise_errors=False)
+    assert result.error is not None
+    assert isinstance(result.error, ExecutionLimitError)
+    assert result.error.limit == "max_memory_bytes"
