@@ -1,26 +1,27 @@
-"""Execution policy and per-execution context.
+"""Execution policy, network permissions, and per-execution context.
 
-``ExecutionPolicy`` is a frozen, validated description of the limits that apply
-to one recipe execution.  ``ExecutionContext`` is created per execution (never a
-global singleton) and shared by all nested recipes (Fork, Subsection, ...), so
-budgets cannot be reset by recursion.
+``ExecutionPolicy`` is a frozen, validated description of the limits and
+permissions that apply to one recipe execution.  ``ExecutionContext`` is
+created per execution (never a global singleton) and shared by all nested
+recipes (Fork, Subsection, ...), so budgets cannot be reset by recursion.
 
-All limits are **cooperative**: they are checked by the engine between steps
-and after each operation.  They cannot interrupt an operation that is already
-running (for example a catastrophic regular expression or a huge ``To Hex``).
-Hard limits require process-level isolation, see ``docs/security.md``.
+All in-process limits are **cooperative**: they are checked by the engine
+between steps and after each operation.  They cannot interrupt a long-running
+computation inside a single C-extension or catastrophic regex without
+process-level isolation; for hard isolation see :mod:`pychef.worker`.
 """
 
 from __future__ import annotations
 
 import contextvars
+import ipaddress
 import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal
 
 from .errors import ExecutionLimitError, ExecutionTimeoutError, OperationPermissionError
 from .types import Data, TraceStep
@@ -32,31 +33,143 @@ _TRACE_ENTRY_OVERHEAD = 192  # conservative estimate of bytes per recorded trace
 
 
 @dataclass(frozen=True, slots=True)
-class ExecutionPolicy:
-    """Resource and permission limits for one execution.
+class NetworkPolicy:
+    """Configurable network policy governing outbound HTTP and DNS-over-HTTPS requests.
 
-    ``None`` disables the respective numeric limit.  The dataclass defaults are
-    the *restrictive* defaults (no network); use :meth:`permissive` for the
-    historical behaviour that is applied when no policy is passed at all, and
-    :meth:`untrusted` for a profile suitable for untrusted recipes and data.
-
-    ``cooperative_deadline_seconds`` is checked between steps only; it is not a
-    hard timeout.
+    Modes:
+    - ``"disabled"``: Outbound requests are blocked unless the target is explicitly
+      matched by ``allowed_hosts`` or ``allowed_subnets``.
+    - ``"public_only"``: Only public, globally routable addresses are allowed; private,
+      loopback, link-local, and reserved ranges are blocked unless explicitly listed in
+      ``allowed_hosts`` or ``allowed_subnets``. Strict SSRF and DNS rebinding protections apply.
+    - ``"unrestricted"``: All destinations (including private, localhost, link-local)
+      are permitted without restriction.
     """
 
-    allow_network: bool = False
-    max_input_bytes: int | None = None
-    max_output_bytes: int | None = None
-    max_steps: int | None = None
-    max_recursion_depth: int | None = None
-    max_branches: int | None = None
-    max_trace_bytes: int | None = None
-    cooperative_deadline_seconds: float | None = None
+    mode: Literal["disabled", "public_only", "unrestricted"] = "disabled"
+    allowed_hosts: tuple[str, ...] = ()
+    denied_hosts: tuple[str, ...] = ()
+    allowed_subnets: tuple[str, ...] = ()
+    denied_subnets: tuple[str, ...] = ()
+    allowed_ports: tuple[int, ...] | None = None
+    denied_ports: tuple[int, ...] = ()
+    allowed_schemes: tuple[str, ...] = ("http", "https")
+    max_response_bytes: int | None = 64 * 1024 * 1024
+    timeout_seconds: float = 30.0
+    allow_redirects: bool = True
+    max_redirects: int = 5
 
     def __post_init__(self) -> None:
-        if not isinstance(self.allow_network, bool):
-            raise TypeError("allow_network must be a bool")
+        if self.mode not in {"disabled", "public_only", "unrestricted"}:
+            raise ValueError(
+                f"mode must be 'disabled', 'public_only', or 'unrestricted', got {self.mode!r}"
+            )
+        # Normalize hostnames to lowercase tuples
+        object.__setattr__(
+            self,
+            "allowed_hosts",
+            tuple(str(h).lower().strip() for h in self.allowed_hosts),
+        )
+        object.__setattr__(
+            self,
+            "denied_hosts",
+            tuple(str(h).lower().strip() for h in self.denied_hosts),
+        )
+        # Validate subnets
+        for subnet in self.allowed_subnets:
+            ipaddress.ip_network(subnet, strict=False)
+        for subnet in self.denied_subnets:
+            ipaddress.ip_network(subnet, strict=False)
+        # Validate ports
+        if self.allowed_ports is not None:
+            for port in self.allowed_ports:
+                if not (1 <= port <= 65535):
+                    raise ValueError(f"Port {port} out of range 1..65535")
+        for port in self.denied_ports:
+            if not (1 <= port <= 65535):
+                raise ValueError(f"Port {port} out of range 1..65535")
+        # Validate limits
+        if self.max_response_bytes is not None and (
+            isinstance(self.max_response_bytes, bool)
+            or not isinstance(self.max_response_bytes, int)
+            or self.max_response_bytes < 0
+        ):
+            raise ValueError("max_response_bytes must be None or a non-negative integer")
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, (int, float))
+            or self.timeout_seconds <= 0
+        ):
+            raise ValueError("timeout_seconds must be a positive number")
+        if (
+            isinstance(self.max_redirects, bool)
+            or not isinstance(self.max_redirects, int)
+            or self.max_redirects < 0
+        ):
+            raise ValueError("max_redirects must be a non-negative integer")
+
+    @classmethod
+    def disabled(cls) -> NetworkPolicy:
+        """Completely disable outbound network requests."""
+        return cls(mode="disabled")
+
+    @classmethod
+    def public_only(cls) -> NetworkPolicy:
+        """Allow requests only to verified public IP addresses with SSRF protection."""
+        return cls(mode="public_only")
+
+    @classmethod
+    def unrestricted(cls) -> NetworkPolicy:
+        """Allow outbound requests to any address, including private, local, and custom ports."""
+        return cls(mode="unrestricted", max_response_bytes=None)
+
+    def with_overrides(self, **kwargs: Any) -> NetworkPolicy:
+        """Return a new immutable NetworkPolicy with the specified overrides."""
+        return replace(self, **kwargs)
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionPolicy:
+    """Resource and permission limits for one recipe execution.
+
+    ``None`` explicitly disables the respective numeric limit.
+    Named profiles:
+    - :meth:`safe` (default): Conservative resource limits, network disabled.
+    - :meth:`untrusted`: Strict limits for untrusted data and recipes.
+    - :meth:`unrestricted`: All numeric limits disabled, unrestricted network access.
+    - :meth:`permissive`: Backward-compatible profile with unlimited numeric limits
+      and public network access.
+    """
+
+    max_memory_bytes: int | None = 512 * 1024**2
+    max_input_bytes: int | None = 16 * 1024**2
+    max_output_bytes: int | None = 64 * 1024**2
+    max_steps: int | None = 10_000
+    max_branches: int | None = 10_000
+    max_recursion_depth: int | None = 8
+    max_trace_bytes: int | None = 1024**2
+    cooperative_deadline_seconds: float | None = 30.0
+    network: NetworkPolicy = field(default_factory=NetworkPolicy.disabled)
+    allow_network: bool | None = field(default=None)
+
+    def __post_init__(self) -> None:
+        if self.allow_network is not None:
+            if not isinstance(self.allow_network, bool):
+                raise TypeError("allow_network must be a bool")
+            if self.allow_network and self.network.mode == "disabled":
+                object.__setattr__(self, "network", NetworkPolicy.public_only())
+            elif not self.allow_network and self.network.mode != "disabled":
+                object.__setattr__(self, "network", NetworkPolicy.disabled())
+        else:
+            is_allowed = (
+                self.network.mode != "disabled"
+                or bool(self.network.allowed_hosts)
+                or bool(self.network.allowed_subnets)
+            )
+            object.__setattr__(self, "allow_network", is_allowed)
+
         for name in (
+            "max_memory_bytes",
             "max_input_bytes",
             "max_output_bytes",
             "max_steps",
@@ -76,15 +189,15 @@ class ExecutionPolicy:
             raise ValueError("cooperative_deadline_seconds must be None or a positive number")
 
     @classmethod
-    def permissive(cls) -> ExecutionPolicy:
-        """No numeric limits, network allowed (SSRF protection still applies)."""
-        return cls(allow_network=True)
+    def safe(cls) -> ExecutionPolicy:
+        """Standard safe configuration: conservative limits, network disabled."""
+        return cls()
 
     @classmethod
     def untrusted(cls) -> ExecutionPolicy:
         """Conservative profile for untrusted recipes and inputs."""
         return cls(
-            allow_network=False,
+            max_memory_bytes=128 * 1024 * 1024,
             max_input_bytes=16 * 1024 * 1024,
             max_output_bytes=64 * 1024 * 1024,
             max_steps=10_000,
@@ -92,17 +205,58 @@ class ExecutionPolicy:
             max_branches=10_000,
             max_trace_bytes=1024 * 1024,
             cooperative_deadline_seconds=30.0,
+            network=NetworkPolicy.disabled(),
         )
 
+    @classmethod
+    def unrestricted(cls) -> ExecutionPolicy:
+        """Unrestricted configuration: all limits disabled, network unrestricted."""
+        return cls(
+            max_memory_bytes=None,
+            max_input_bytes=None,
+            max_output_bytes=None,
+            max_steps=None,
+            max_recursion_depth=None,
+            max_branches=None,
+            max_trace_bytes=None,
+            cooperative_deadline_seconds=None,
+            network=NetworkPolicy.unrestricted(),
+        )
 
-def data_size(value: Data) -> int:
+    @classmethod
+    def permissive(cls) -> ExecutionPolicy:
+        """Legacy profile: numeric limits disabled, public network allowed."""
+        return cls(
+            max_memory_bytes=None,
+            max_input_bytes=None,
+            max_output_bytes=None,
+            max_steps=None,
+            max_recursion_depth=None,
+            max_branches=None,
+            max_trace_bytes=None,
+            cooperative_deadline_seconds=None,
+            network=NetworkPolicy.public_only(),
+        )
+
+    legacy = permissive
+
+    def with_overrides(self, **kwargs: Any) -> ExecutionPolicy:
+        """Return a new immutable ExecutionPolicy with specified overrides."""
+        return replace(self, **kwargs)
+
+
+def data_size(value: Data | int) -> int:
     """Size in bytes; ``str`` is measured as UTF-8 so text and bytes are comparable."""
+    if isinstance(value, int):
+        return value
     if isinstance(value, bytes):
         return len(value)
     return len(value.encode("utf-8", "surrogatepass"))
 
 
-def _within(value: Data, limit: int) -> bool:
+def _within(value: Data | int, limit: int) -> bool:
+    if isinstance(value, int):
+        return value <= limit
     if isinstance(value, bytes):
         return len(value) <= limit
     if len(value) > limit:  # UTF-8 needs at least one byte per character
@@ -116,7 +270,7 @@ def _within(value: Data, limit: int) -> bool:
 class ExecutionContext:
     """Mutable state shared by an execution and all nested executions."""
 
-    policy: ExecutionPolicy = field(default_factory=ExecutionPolicy.permissive)
+    policy: ExecutionPolicy = field(default_factory=ExecutionPolicy.safe)
     trace_enabled: bool = False
     execution_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     steps: int = 0
@@ -211,16 +365,33 @@ class ExecutionContext:
             self.depth -= 1
             self.branch_path = saved_path
 
-    def check_input(
-        self, value: Data, operation: str | None = None, step: int | None = None
+    def check_memory(
+        self, value_or_size: Data | int, operation: str | None = None, step: int | None = None
     ) -> None:
+        limit = self.policy.max_memory_bytes
+        if limit is None:
+            return
+        size = value_or_size if isinstance(value_or_size, int) else data_size(value_or_size)
+        if size > limit:
+            raise self._limit(
+                "max_memory_bytes",
+                f"memory budget of {limit} bytes exceeded ({size} bytes requested)",
+                operation,
+                step,
+            )
+
+    def check_input(
+        self, value: Data | int, operation: str | None = None, step: int | None = None
+    ) -> None:
+        self.check_memory(value, operation, step)
         limit = self.policy.max_input_bytes
         if limit is not None and not _within(value, limit):
             raise self._limit("max_input_bytes", f"input exceeds {limit} bytes", operation, step)
 
     def check_output(
-        self, value: Data, operation: str | None = None, step: int | None = None
+        self, value: Data | int, operation: str | None = None, step: int | None = None
     ) -> None:
+        self.check_memory(value, operation, step)
         limit = self.policy.max_output_bytes
         if limit is not None and not _within(value, limit):
             raise self._limit("max_output_bytes", f"output exceeds {limit} bytes", operation, step)

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
 from .errors import OperationError, RecipeError
+from .execution import ExecutionContext, ExecutionPolicy, active_policy
 from .recipe import Recipe
 from .registry import OperationRegistry, registry
 from .types import RecipeStep
@@ -170,19 +172,70 @@ class Pipeline:
 
         return self._new(_Stage("select(" + ", ".join(map(str, path)) + ")", select_value))
 
-    def transform(self, value: Any) -> Any:
+    def transform(
+        self,
+        value: Any,
+        *,
+        policy: ExecutionPolicy | None = None,
+        context: ExecutionContext | None = None,
+    ) -> Any:
         """Transform one value through every configured stage."""
-        for stage in self._stages:
-            value = stage.run(value)
-        return value
+        if context is None:
+            context = ExecutionContext(policy=policy or ExecutionPolicy.safe())
+        elif policy is not None and policy is not context.policy:
+            raise ValueError("pass either policy or context, not both")
+
+        with active_policy(context.policy):
+            if isinstance(value, (str, bytes)):
+                context.check_input(value)
+            for index, stage in enumerate(self._stages):
+                context.charge_step(stage.name, index)
+                if stage.recipe_step is not None:
+                    context.require_operation(stage.recipe_step.op, index)
+                started = perf_counter()
+                before = value
+                try:
+                    value = stage.run(value)
+                except OperationError as exc:
+                    if exc.step_index is None:
+                        exc.step_index = index
+                        exc.branch_path = context.branch_path
+                        exc.execution_id = context.execution_id
+                    if isinstance(before, (str, bytes)):
+                        context.record(stage.name, index, before, None, started, exc)
+                    raise
+                except Exception as exc:
+                    if isinstance(before, (str, bytes)):
+                        context.record(stage.name, index, before, None, started, exc)
+                    raise
+                if isinstance(before, (str, bytes)) and isinstance(value, (str, bytes)):
+                    context.record(stage.name, index, before, value, started, None)
+                    context.check_output(value, stage.name, index)
+            return value
 
     run = transform
     bake = transform
     __call__ = transform
 
-    def transform_many(self, values: Iterable[Any]) -> tuple[Any, ...]:
+    def iter_transform(
+        self,
+        values: Iterable[Any],
+        *,
+        policy: ExecutionPolicy | None = None,
+    ) -> Iterator[Any]:
+        """Stream transformations across *values* without buffering the full sequence."""
+        context = ExecutionContext(policy=policy or ExecutionPolicy.safe())
+        for item in values:
+            yield self.transform(item, context=context)
+
+    def transform_many(
+        self,
+        values: Iterable[Any],
+        *,
+        policy: ExecutionPolicy | None = None,
+    ) -> tuple[Any, ...]:
         """Transform a finite iterable while retaining input order."""
-        return tuple(self.transform(value) for value in values)
+        return tuple(self.iter_transform(values, policy=policy))
 
     def trace(self, value: Any) -> tuple[PipelineTrace, ...]:
         """Run the pipeline and retain every intermediate input and output."""
@@ -281,8 +334,8 @@ class Pipeline:
     def parse_capture(
         self,
         *,
-        max_packets: int = 100_000,
-        max_packet_size: int = 16 * 1024 * 1024,
+        max_packets: int | None = 100_000,
+        max_packet_size: int | None = 16 * 1024 * 1024,
     ) -> Pipeline:
         from .packets import parse_capture
 

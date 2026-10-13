@@ -15,7 +15,7 @@ from typing import IO, Any, cast
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from ..errors import OperationPermissionError
-from ..execution import current_policy
+from ..execution import NetworkPolicy, current_policy
 from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, char_rep, require_int
@@ -360,46 +360,95 @@ def _parse_http_url(value: str) -> tuple[str, str, int]:
     return parsed.scheme, parsed.hostname, port
 
 
-def _resolve_public(host: str, port: int) -> list[str]:
-    """Resolve *host* once and return only verified public addresses.
+def _get_network_policy() -> NetworkPolicy:
+    policy = current_policy()
+    if policy is not None:
+        return policy.network
+    return NetworkPolicy.public_only()
 
-    Raises ``ValueError`` if resolution fails, yields nothing, or *any* returned
-    address is non-global (a mixed answer is rejected as suspicious).
-    """
+
+def _resolve_with_policy(host: str, port: int, net_policy: NetworkPolicy) -> list[str]:
+    """Resolve *host* once and validate all returned addresses against *net_policy*."""
+    host_lower = host.lower().strip()
+    if host_lower in net_policy.denied_hosts:
+        raise OperationPermissionError(
+            "HTTP request", f"Host '{host}' is explicitly denied by network policy"
+        )
+    if net_policy.denied_ports and port in net_policy.denied_ports:
+        raise OperationPermissionError(
+            "HTTP request", f"Port {port} is explicitly denied by network policy"
+        )
+    if net_policy.allowed_ports is not None and port not in net_policy.allowed_ports:
+        raise OperationPermissionError("HTTP request", f"Port {port} is not in allowed ports")
+
+    host_explicitly_allowed = host_lower in net_policy.allowed_hosts
+
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError) as exc:
         raise ValueError(f"Could not resolve HTTP host: {host}") from exc
+
     addresses: list[str] = []
     for info in infos:
         text = str(info[4][0]).split("%", 1)[0]
-        if not _is_public(ipaddress.ip_address(text)):
-            raise ValueError(
-                "Requests to local, private, reserved, or non-global addresses are blocked"
+        ip = ipaddress.ip_address(text)
+
+        if text in net_policy.denied_hosts:
+            raise OperationPermissionError(
+                "HTTP request", f"IP '{text}' is explicitly denied by network policy"
             )
+        for denied_sub in net_policy.denied_subnets:
+            if ip in ipaddress.ip_network(denied_sub, strict=False):
+                raise OperationPermissionError(
+                    "HTTP request", f"IP '{text}' is in denied subnet '{denied_sub}'"
+                )
+
+        ip_explicitly_allowed = any(
+            ip in ipaddress.ip_network(allowed_sub, strict=False)
+            for allowed_sub in net_policy.allowed_subnets
+        )
+
+        if not (host_explicitly_allowed or ip_explicitly_allowed):
+            if net_policy.mode == "unrestricted":
+                pass
+            elif net_policy.mode == "public_only":
+                if not _is_public(ip):
+                    raise ValueError(
+                        "Requests to local, private, reserved, or non-global addresses are blocked"
+                    )
+            elif net_policy.mode == "disabled":
+                raise OperationPermissionError(
+                    "HTTP request", "network access is not permitted by the execution policy"
+                )
+
         if text not in addresses:
             addresses.append(text)
+
     if not addresses:
         raise ValueError(f"Could not resolve HTTP host: {host}")
     return addresses
 
 
-def _safe_public_url(value: str) -> str:
-    """Pre-flight validation of *value* (syntax and current DNS answer).
+def _validate_and_resolve(value: str, net_policy: NetworkPolicy) -> tuple[str, list[str], int]:
+    scheme, host, port = _parse_http_url(value)
+    if scheme not in net_policy.allowed_schemes:
+        raise ValueError(f"Scheme '{scheme}' is not permitted by network policy")
+    addresses = _resolve_with_policy(host, port, net_policy)
+    return host, addresses, port
 
-    This check alone is subject to DNS rebinding.  The actual connection is made
-    by :class:`_PinnedConnectionMixin`, which re-validates the addresses it
-    really connects to.
-    """
-    _, host, port = _parse_http_url(value)
-    _resolve_public(host, port)
+
+def _safe_public_url(value: str) -> str:
+    """Pre-flight validation of *value* (syntax and current DNS answer)."""
+    _validate_and_resolve(value, NetworkPolicy.public_only())
     return value
 
 
-def _connect_pinned(host: str, port: int, timeout: float | None) -> socket.socket:
+def _connect_pinned(
+    host: str, port: int, timeout: float | None, net_policy: NetworkPolicy
+) -> socket.socket:
     """Connect to a validated address; resolution and validation happen right here."""
     last_error: OSError | None = None
-    for address in _resolve_public(host, port):
+    for address in _resolve_with_policy(host, port, net_policy):
         try:
             return socket.create_connection((address, port), timeout)
         except OSError as exc:
@@ -410,38 +459,60 @@ def _connect_pinned(host: str, port: int, timeout: float | None) -> socket.socke
 class _PinnedHTTPConnection(http.client.HTTPConnection):
     """HTTP connection that only ever connects to the addresses it validated."""
 
+    net_policy: NetworkPolicy = NetworkPolicy.public_only()
+
     def connect(self) -> None:
-        self.sock = _connect_pinned(self.host, self.port, self.timeout)
+        self.sock = _connect_pinned(self.host, self.port, self.timeout, self.net_policy)
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     """HTTPS connection with pinned addresses; TLS still verifies the hostname."""
 
+    net_policy: NetworkPolicy = NetworkPolicy.public_only()
+
     def connect(self) -> None:
-        sock = _connect_pinned(self.host, self.port, self.timeout)
+        sock = _connect_pinned(self.host, self.port, self.timeout, self.net_policy)
         context = cast(ssl.SSLContext, getattr(self, "_context"))  # noqa: B009
         self.sock = context.wrap_socket(sock, server_hostname=self.host)
 
 
 class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, net_policy: NetworkPolicy) -> None:
+        super().__init__()
+        self.net_policy = net_policy
+
     def http_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
-        return self.do_open(_PinnedHTTPConnection, req)
+        conn_cls = type(
+            "_PolicyHTTPConnection",
+            (_PinnedHTTPConnection,),
+            {"net_policy": self.net_policy},
+        )
+        return self.do_open(conn_cls, req)
 
 
 class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
-    def __init__(self) -> None:
+    def __init__(self, net_policy: NetworkPolicy) -> None:
         super().__init__(context=ssl.create_default_context())
+        self.net_policy = net_policy
 
     def https_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        conn_cls = type(
+            "_PolicyHTTPSConnection",
+            (_PinnedHTTPSConnection,),
+            {"net_policy": self.net_policy},
+        )
         return self.do_open(
-            _PinnedHTTPSConnection,
+            conn_cls,
             req,
             context=getattr(self, "_context"),  # noqa: B009
         )
 
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
-    max_redirections = 5
+    def __init__(self, net_policy: NetworkPolicy) -> None:
+        super().__init__()
+        self.net_policy = net_policy
+        object.__setattr__(self, "max_redirections", net_policy.max_redirects)
 
     def redirect_request(
         self,
@@ -452,13 +523,20 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         headers: HTTPMessage,
         newurl: str,
     ) -> urllib.request.Request | None:
-        _parse_http_url(newurl)
+        if not self.net_policy.allow_redirects:
+            raise ValueError("HTTP redirects are disabled by network policy")
+        scheme, _, _ = _parse_http_url(newurl)
+        if scheme not in self.net_policy.allowed_schemes:
+            raise ValueError(f"Scheme '{scheme}' is not permitted by network policy")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _require_network_permission() -> None:
-    policy = current_policy()
-    if policy is not None and not policy.allow_network:
+def _require_network_permission(net_policy: NetworkPolicy) -> None:
+    if (
+        net_policy.mode == "disabled"
+        and not net_policy.allowed_hosts
+        and not net_policy.allowed_subnets
+    ):
         raise OperationPermissionError(
             "HTTP request", "network access is not permitted by the execution policy"
         )
@@ -467,25 +545,34 @@ def _require_network_permission() -> None:
 def _request(
     url: str, method: str, headers: dict[str, str], body: bytes | None
 ) -> tuple[int, str, HTTPMessage, bytes]:
-    _require_network_permission()
-    _parse_http_url(url)
+    net_policy = _get_network_policy()
+    _require_network_permission(net_policy)
+    scheme, _, _ = _parse_http_url(url)
+    if scheme not in net_policy.allowed_schemes:
+        raise ValueError(f"Scheme '{scheme}' is not permitted by network policy")
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     # An empty ProxyHandler ignores HTTP(S)_PROXY: a proxy would resolve and
     # connect on our behalf and bypass the address check.
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
-        _PinnedHTTPHandler(),
-        _PinnedHTTPSHandler(),
-        _SafeRedirectHandler(),
+        _PinnedHTTPHandler(net_policy),
+        _PinnedHTTPSHandler(net_policy),
+        _SafeRedirectHandler(net_policy),
     )
     try:
-        response: Any = opener.open(request, timeout=_HTTP_TIMEOUT)
+        response: Any = opener.open(request, timeout=net_policy.timeout_seconds)
     except urllib.error.HTTPError as exc:
         response = exc
     with response:
-        data = response.read(_MAX_HTTP_RESPONSE + 1)
-        if len(data) > _MAX_HTTP_RESPONSE:
-            raise ValueError("HTTP response exceeded the 64 MiB safety limit")
+        limit = net_policy.max_response_bytes
+        if _MAX_HTTP_RESPONSE != 64 * 1024 * 1024 and _MAX_HTTP_RESPONSE is not None:
+            limit = _MAX_HTTP_RESPONSE if limit is None else min(limit, _MAX_HTTP_RESPONSE)
+        if limit is not None:
+            data = response.read(limit + 1)
+            if len(data) > limit:
+                raise ValueError(f"HTTP response exceeded the {limit} bytes safety limit")
+        else:
+            data = response.read()
         status = response.status if response.status is not None else response.getcode()
         if status is None:
             raise ValueError("HTTP response did not contain a status code")

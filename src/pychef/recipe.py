@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from time import perf_counter
 from typing import Any, Literal
@@ -59,12 +59,12 @@ class Recipe:
     ) -> tuple[Data, int]:
         """Run the recipe and return ``(value, progress)``.
 
-        Without *policy* or *context* the historical, unlimited behaviour
-        (:meth:`ExecutionPolicy.permissive`) applies.  A *context* may be shared
+        Without *policy* or *context*, safe default limits
+        (:meth:`ExecutionPolicy.safe`) apply. A *context* may be shared
         to account several executions against one budget.
         """
         if context is None:
-            context = ExecutionContext(policy=policy or ExecutionPolicy.permissive())
+            context = ExecutionContext(policy=policy or ExecutionPolicy.safe())
         elif policy is not None and policy is not context.policy:
             raise ValueError("pass either policy or context, not both")
         with active_policy(context.policy):
@@ -161,52 +161,50 @@ class Recipe:
                     merge_delimiter = _binary_delimiter(
                         str(step.args[1] if len(step.args) > 1 else "\n")
                     )
-                    outputs = []
+                    outputs: list[str] = []
                     text = to_text(value)
-                    # JavaScript's split("") yields single characters; str.split("") raises.
-                    parts = (
-                        ([] if not value else list(text))
-                        if split_delimiter == ""
-                        else (text.split(split_delimiter) if value else [])
-                    )
-                    for part in parts:
+                    accumulated_bytes = 0
+                    for part in _split_iter(text, split_delimiter):
                         ctx.charge_branch(step.op, abs_index)
                         try:
                             with ctx.nested(step.op, abs_index):
-                                outputs.append(
-                                    Recipe(substeps)._run(
-                                        part, operation_registry, ctx, base + index + 1
-                                    )[0]
-                                )
+                                transformed_res = Recipe(substeps)._run(
+                                    part, operation_registry, ctx, base + index + 1
+                                )[0]
                         except _FATAL_ERRORS:
                             raise
                         except Exception:
                             if not ignore_errors:
                                 raise
-                            outputs.append(part)
-                    value = merge_delimiter.join(to_text(item) for item in outputs)
+                            transformed_res = part
+                        part_str = to_text(transformed_res)
+                        outputs.append(part_str)
+                        accumulated_bytes += len(part_str.encode("utf-8", "surrogatepass"))
+                        ctx.check_output(accumulated_bytes, step.op, abs_index)
+                    value = merge_delimiter.join(outputs)
                 else:
                     pattern = str(step.args[0] if step.args else "")
                     flags = 0 if len(step.args) < 2 or step.args[1] else re.IGNORECASE
                     global_matching = bool(step.args[2] if len(step.args) > 2 else True)
                     source = to_text(value)
                     matches = (
-                        _finditer(pattern, source, flags, step.op, abs_index, ctx)
+                        _compile(pattern, flags, step.op, abs_index, ctx).finditer(source)
                         if pattern
-                        else []
+                        else iter(())
                     )
-                    if not global_matching:
-                        matches = matches[:1]
-                    output = []
+                    output: list[str] = []
                     cursor = 0
+                    accumulated_bytes = 0
                     for match in matches:
                         selected = match.group(1) if match.groups() else match.group(0)
                         start, end = match.span(1) if match.groups() else match.span(0)
-                        output.append(source[cursor:start])
+                        prefix = source[cursor:start]
+                        output.append(prefix)
+                        accumulated_bytes += len(prefix.encode("utf-8", "surrogatepass"))
                         ctx.charge_branch(step.op, abs_index)
                         try:
                             with ctx.nested(step.op, abs_index):
-                                transformed = Recipe(substeps)._run(
+                                transformed_sub = Recipe(substeps)._run(
                                     selected, operation_registry, ctx, base + index + 1
                                 )[0]
                         except _FATAL_ERRORS:
@@ -214,10 +212,16 @@ class Recipe:
                         except Exception:
                             if not ignore_errors:
                                 raise
-                            transformed = selected
-                        output.append(to_text(transformed))
+                            transformed_sub = selected
+                        sub_str = to_text(transformed_sub)
+                        output.append(sub_str)
+                        accumulated_bytes += len(sub_str.encode("utf-8", "surrogatepass"))
+                        ctx.check_output(accumulated_bytes, step.op, abs_index)
                         cursor = end
-                    output.append(source[cursor:])
+                        if not global_matching:
+                            break
+                    suffix = source[cursor:]
+                    output.append(suffix)
                     value = "".join(output)
                 ctx.check_output(value, step.op, abs_index)
                 progress = merge_index + 1
@@ -294,6 +298,24 @@ def _binary_delimiter(value: str) -> str:
         return chr(code) if code <= 0x10FFFF else match.group(0)
 
     return _ESCAPES.sub(replace_escape, value)
+
+
+def _split_iter(text: str, delimiter: str) -> Iterator[str]:
+    """Iterate over parts split by *delimiter* without buffering full lists."""
+    if not text:
+        return
+    if delimiter == "":
+        yield from text
+        return
+    start = 0
+    delim_len = len(delimiter)
+    while True:
+        pos = text.find(delimiter, start)
+        if pos == -1:
+            yield text[start:]
+            break
+        yield text[start:pos]
+        start = pos + delim_len
 
 
 def _compile(
@@ -393,9 +415,11 @@ class Chef:
         *,
         operation_registry: OperationRegistry = registry,
         policy: ExecutionPolicy | None = None,
+        isolated: bool = False,
     ) -> None:
         self.registry = operation_registry
         self.policy = policy
+        self.isolated = isolated
 
     def bake_result(
         self,
@@ -406,15 +430,22 @@ class Chef:
         raise_errors: bool = True,
         policy: ExecutionPolicy | None = None,
         trace: bool = False,
+        isolated: bool | None = None,
     ) -> BakeResult:
+        use_isolated = self.isolated if isolated is None else isolated
+        eff_policy = policy or self.policy or ExecutionPolicy.safe()
+        if use_isolated:
+            from .worker import IsolatedWorker
+
+            worker = IsolatedWorker(policy=eff_policy)
+            return worker.run(value, recipe, return_type=return_type, trace=trace)
+
         parsed = recipe if isinstance(recipe, Recipe) else Recipe(recipe)
         started = perf_counter()
         progress = 0
         error: Exception | None = None
         result: Data = value
-        context = ExecutionContext(
-            policy=policy or self.policy or ExecutionPolicy.permissive(), trace_enabled=trace
-        )
+        context = ExecutionContext(policy=eff_policy, trace_enabled=trace)
         try:
             result, progress = parsed.execute(
                 value, operation_registry=self.registry, context=context
@@ -441,8 +472,11 @@ class Chef:
         *,
         return_type: Literal["str", "bytes"] | None = None,
         policy: ExecutionPolicy | None = None,
+        isolated: bool | None = None,
     ) -> Data:
-        return self.bake_result(value, recipe, return_type=return_type, policy=policy).result
+        return self.bake_result(
+            value, recipe, return_type=return_type, policy=policy, isolated=isolated
+        ).result
 
 
 def _convert_result(value: Data, return_type: Literal["str", "bytes"] | None) -> Data:
@@ -459,6 +493,9 @@ def bake(
     *,
     return_type: Literal["str", "bytes"] | None = None,
     policy: ExecutionPolicy | None = None,
+    isolated: bool = False,
 ) -> Data:
     """Bake *value* with *recipe* and return the transformed value."""
-    return Chef().bake(value, recipe, return_type=return_type, policy=policy)
+    return Chef(policy=policy, isolated=isolated).bake(
+        value, recipe, return_type=return_type, isolated=isolated
+    )

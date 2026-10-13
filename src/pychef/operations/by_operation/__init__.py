@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+from typing import Any
 
 MODULES = (
     "a1z26_cipher_decode",
@@ -509,7 +510,17 @@ MODULES = (
     "zlib_inflate",
 )
 
-for _module in MODULES:
-    import_module(f"{__name__}.{_module}")
 
-__all__ = ["MODULES"]
+def __getattr__(name: str) -> Any:
+    if name in MODULES:
+        return import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def load_all() -> None:
+    """Eagerly load all operation modules into the registry."""
+    for module_name in MODULES:
+        import_module(f"{__name__}.{module_name}")
+
+
+__all__ = ["MODULES", "load_all"]

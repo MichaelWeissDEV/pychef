@@ -38,7 +38,10 @@ def md5(value: Data, _args: Args) -> str:
 @implementation("SHA1", category="Hashing")
 def sha1(value: Data, args: Args) -> str:
     rounds = require_int(arg(args, 0, 80), name="rounds")
-    return _sha1(to_bytes(value), rounds).hex()
+    data = to_bytes(value)
+    if rounds == 80:
+        return hashlib.sha1(data).hexdigest()
+    return _sha1(data, rounds).hex()
 
 
 @implementation("SHA2", category="Hashing")
@@ -47,11 +50,24 @@ def sha2(value: Data, args: Args) -> str:
     data = to_bytes(value)
     if size in {"224", "256"}:
         rounds = require_int(arg(args, 1, 64), name="rounds")
+        if rounds == 64:
+            if size == "256":
+                return hashlib.sha256(data).hexdigest()
+            return hashlib.sha224(data).hexdigest()
         return _sha256(data, int(size), rounds).hex()
     bits = {"384": 384, "512": 512, "512/224": 224, "512/256": 256}.get(size)
     if bits is None:
         raise ValueError(f"unsupported SHA-2 size: {size}")
     rounds = require_int(arg(args, 2, 160), name="rounds")
+    if rounds == 160:
+        if size == "384":
+            return hashlib.sha384(data).hexdigest()
+        if size == "512":
+            return hashlib.sha512(data).hexdigest()
+        if size == "512/224" and hasattr(hashlib, "sha512_224"):
+            return hashlib.sha512_224(data).hexdigest()
+        if size == "512/256" and hasattr(hashlib, "sha512_256"):
+            return hashlib.sha512_256(data).hexdigest()
     return _sha512(data, bits, rounds).hex()
 
 

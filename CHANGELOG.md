@@ -5,6 +5,42 @@ All notable changes to this project are documented here. Releases follow
 
 ## [Unreleased]
 
+### Added
+
+- **Unified Execution Policies & Safety Profiles**:
+  - `ExecutionPolicy.safe()` (default): Conservative budgets (512 MiB memory, 16 MiB input, 64 MiB output, 10k steps/branches, 30s deadline) and network disabled.
+  - `ExecutionPolicy.untrusted()`: Stricter sandboxing for untrusted data.
+  - `ExecutionPolicy.unrestricted()`: All resource caps lifted (`None`) and unrestricted network access.
+  - `ExecutionPolicy.permissive()`: Legacy profile preserving backwards-compatibility with open public network.
+  - Explicit `None` disables any numeric budget without falling back to internal defaults.
+- **Granular Network Control & SSRF Protection**:
+  - `NetworkPolicy` with modes `disabled`, `public_only`, and `unrestricted`.
+  - Configurable `allowed_hosts`, `denied_hosts`, `allowed_subnets`, `denied_subnets`, `allowed_ports`, `denied_ports`, and `allowed_schemes`.
+  - DNS pinning directly into socket connections to prevent DNS rebinding attacks.
+  - Explicit bypass of environment proxies (`HTTP_PROXY`) to enforce destination checks.
+- **Worker Process Isolation**:
+  - `IsolatedWorker` and `bake_isolated()` executing recipes in isolated subprocesses using `spawn` context.
+  - Applies OS-level `setrlimit` address space constraints on POSIX systems where supported.
+  - Hard deadline process termination and OOM / crash recovery (`ExecutionLimitError`).
+  - Integrated into `bake(..., isolated=True)` and `Chef`.
+- **On-Demand Lazy Loading**:
+  - Registry lazily imports individual operation modules only when requested, drastically improving initial import times and reducing memory footprints.
+  - `by_operation` module supports dynamic `__getattr__` and `load_all()`.
+- **Introspection & Metadata API**:
+  - Structured `OperationSpec` and `OperationArgSpec` dataclasses.
+  - `pychef.get_operation_spec(name)`, `pychef.list_operation_specs()`, `registry.spec(name)`, and `registry.specs()`.
+  - Built-in `_data/cyberchef_operations.json` packaged with wheel distributions.
+- **Pipeline Streaming**:
+  - `Pipeline.iter_transform()` for generator-based streaming across large sequences with shared execution context.
+- **Performance Fast-Paths**:
+  - Standard-rounds fast path for `SHA1` and `SHA2` (224, 256, 384, 512) yielding up to 3,800x speedups while preserving bit-exact custom-round fallbacks.
+
+### Changed
+
+- Default execution policy across `bake()` and `Chef()` changed to `ExecutionPolicy.safe()` (network disabled by default).
+- Structured error information on all `PyChefError` instances (`error_code`, `step_index`, `branch_path`, `execution_id`, `to_dict()`).
+- Error unpickling support (`__reduce__`) across processes for `OperationError`, `ExecutionLimitError`, and `ExecutionTimeoutError`.
+
 ## [0.1.1] - 2026-08-01
 
 ### Fixed
@@ -39,11 +75,3 @@ All notable changes to this project are documented here. Releases follow
 [Unreleased]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/MichaelWeissDEV/pychef/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/MichaelWeissDEV/pychef/releases/tag/v0.1.0
-
-## Unreleased
-- Added `ExecutionPolicy` / `ExecutionContext`, structured errors (`error_code`, `step_index`, ...).
-- Network operations: pinned, re-validated connections; proxies ignored; blocked when a policy
-  without `allow_network` is used. Calls without a policy keep the previous behaviour.
-- Fixed non-ASCII Fork delimiters, empty Fork delimiter, default HTTP port validation.
-- Behaviour change: negative or non-integer jump limits now raise `InvalidOperationArgumentsError`;
-  invalid regexes in flow control raise it instead of `re.error`.

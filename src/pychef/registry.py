@@ -1,14 +1,19 @@
-"""Thread-safe operation registry."""
+"""Thread-safe operation registry with on-demand lazy loading."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+import importlib
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from threading import RLock
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from .errors import UnknownOperationError
+from .manifest import OPERATION_MODULES
 from .types import Args, Data
+
+if TYPE_CHECKING:
+    from .spec import OperationSpec
 
 OperationFunction = Callable[[Data, Args], Data]
 
@@ -28,35 +33,61 @@ class Operation:
 class OperationRegistry:
     """Case-sensitive registry matching CyberChef's public operation names."""
 
-    def __init__(self) -> None:
+    def __init__(self, manifest: Mapping[str, str] | None = None) -> None:
         self._operations: dict[str, Operation] = {}
+        self._manifest: dict[str, str] = (
+            dict(manifest) if manifest is not None else dict(OPERATION_MODULES)
+        )
         self._lock = RLock()
 
     def register(self, operation: Operation) -> None:
         with self._lock:
-            if operation.name in self._operations:
+            existing = self._operations.get(operation.name)
+            if existing is not None and existing.function is not operation.function:
                 raise ValueError(f"operation already registered: {operation.name}")
             self._operations[operation.name] = operation
 
     def get(self, name: str) -> Operation:
-        try:
-            return self._operations[name]
-        except KeyError as exc:
-            raise UnknownOperationError(f"unknown operation: {name}") from exc
+        op = self._operations.get(name)
+        if op is not None:
+            return op
+        with self._lock:
+            op = self._operations.get(name)
+            if op is not None:
+                return op
+            module_slug = self._manifest.get(name)
+            if module_slug is not None:
+                importlib.import_module(f"pychef.operations.by_operation.{module_slug}")
+                op = self._operations.get(name)
+                if op is not None:
+                    return op
+            raise UnknownOperationError(f"unknown operation: {name}")
 
     def names(self) -> tuple[str, ...]:
         with self._lock:
-            return tuple(sorted(self._operations))
+            return tuple(sorted(set(self._manifest) | set(self._operations)))
+
+    def spec(self, name: str) -> OperationSpec:
+        """Return the structured specification for *name*."""
+        from .spec import get_operation_spec
+
+        return get_operation_spec(name)
+
+    def specs(self) -> tuple[OperationSpec, ...]:
+        """Return structured specifications for all known operations."""
+        from .spec import list_operation_specs
+
+        return list_operation_specs()
 
     def __contains__(self, name: object) -> bool:
-        return name in self._operations
+        return name in self._operations or name in self._manifest
 
     def __len__(self) -> int:
-        return len(self._operations)
+        return len(set(self._manifest) | set(self._operations))
 
     def __iter__(self) -> Iterator[Operation]:
-        with self._lock:
-            yield from tuple(self._operations.values())
+        for name in self.names():
+            yield self.get(name)
 
 
 registry = OperationRegistry()

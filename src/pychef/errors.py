@@ -73,6 +73,9 @@ class OperationError(PyChefError):
         self.operation = operation
         self.message = message
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (self.__class__, (self.operation, self.message), self.__dict__)
+
 
 class RecipeError(PyChefError):
     """Raised when a recipe configuration is malformed."""
@@ -101,6 +104,9 @@ class ExecutionLimitError(PyChefError):
         super().__init__(message, **context)
         self.limit = limit
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (self.__class__, (self.limit, self.message), self.__dict__)
+
     def to_dict(self) -> dict[str, Any]:
         data = super().to_dict()
         data["limit"] = self.limit
@@ -118,3 +124,6 @@ class ExecutionTimeoutError(ExecutionLimitError, TimeoutError):
 
     def __init__(self, message: str, **context: Any) -> None:
         super().__init__("cooperative_deadline_seconds", message, **context)
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (self.__class__, (self.message,), self.__dict__)

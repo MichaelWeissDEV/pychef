@@ -663,8 +663,8 @@ def _capture_packet(
 def parse_pcap(
     value: Data | bytearray | memoryview,
     *,
-    max_packets: int = 100_000,
-    max_packet_size: int = 16 * 1024 * 1024,
+    max_packets: int | None = 100_000,
+    max_packet_size: int | None = 16 * 1024 * 1024,
 ) -> dict[str, Any]:
     """Decode a classic PCAP capture and every supported packet layer."""
     data = _bytes(value)
@@ -686,7 +686,7 @@ def parse_pcap(
     packets: list[dict[str, Any]] = []
     position = 24
     while position < len(data):
-        if len(packets) >= max_packets:
+        if max_packets is not None and len(packets) >= max_packets:
             raise ValueError(f"capture exceeds max_packets={max_packets}")
         _require(data[position:], 16, "PCAP packet header")
         seconds, fraction, captured_length, original_length = struct.unpack_from(
@@ -696,7 +696,7 @@ def parse_pcap(
         maximum_fraction = 1_000_000 if resolution == "microseconds" else 1_000_000_000
         if fraction >= maximum_fraction:
             raise ValueError(f"invalid PCAP {resolution} timestamp fraction: {fraction}")
-        if captured_length > max_packet_size:
+        if max_packet_size is not None and captured_length > max_packet_size:
             raise ValueError(f"captured packet exceeds max_packet_size={max_packet_size}")
         end = position + captured_length
         if end > len(data):
@@ -771,8 +771,8 @@ def _interface_timing(options: Sequence[Mapping[str, Any]], endian: str) -> tupl
 def parse_pcapng(
     value: Data | bytearray | memoryview,
     *,
-    max_packets: int = 100_000,
-    max_packet_size: int = 16 * 1024 * 1024,
+    max_packets: int | None = 100_000,
+    max_packet_size: int | None = 16 * 1024 * 1024,
 ) -> dict[str, Any]:
     """Decode PCAPNG sections, interfaces, enhanced/simple packet blocks."""
     data = _bytes(value)
@@ -838,7 +838,7 @@ def parse_pcapng(
         elif block_type in {2, 6}:
             description = "PCAPNG packet" if block_type == 2 else "PCAPNG enhanced packet"
             _require(body, 20, description)
-            if len(packets) >= max_packets:
+            if max_packets is not None and len(packets) >= max_packets:
                 raise ValueError(f"capture exceeds max_packets={max_packets}")
             if block_type == 2:
                 (
@@ -857,7 +857,9 @@ def parse_pcapng(
             if interface_id >= len(section_interfaces):
                 raise ValueError("PCAPNG packet references an unknown interface")
             padded_end = 20 + ((captured_length + 3) & ~3)
-            if captured_length > max_packet_size or padded_end > len(body):
+            if (
+                max_packet_size is not None and captured_length > max_packet_size
+            ) or padded_end > len(body):
                 raise ValueError("invalid PCAPNG captured packet length")
             interface = section_interfaces[interface_id]
             timestamp = (timestamp_high << 32) | timestamp_low
@@ -882,7 +884,7 @@ def parse_pcapng(
             _require(body, 4, "PCAPNG simple packet")
             if not section_interfaces:
                 raise ValueError("PCAPNG simple packet has no interface")
-            if len(packets) >= max_packets:
+            if max_packets is not None and len(packets) >= max_packets:
                 raise ValueError(f"capture exceeds max_packets={max_packets}")
             original_length = struct.unpack_from(f"{endian}I", body)[0]
             snaplen = int(section_interfaces[0]["snapshot_length"])
@@ -891,7 +893,7 @@ def parse_pcapng(
                 snaplen or original_length,
                 len(body) - 4,
             )
-            if captured_length > max_packet_size:
+            if max_packet_size is not None and captured_length > max_packet_size:
                 raise ValueError(f"captured packet exceeds max_packet_size={max_packet_size}")
             packet_data = body[4 : 4 + captured_length]
             interface = section_interfaces[0]
@@ -912,8 +914,8 @@ def parse_pcapng(
 def parse_capture(
     value: Data | bytearray | memoryview,
     *,
-    max_packets: int = 100_000,
-    max_packet_size: int = 16 * 1024 * 1024,
+    max_packets: int | None = 100_000,
+    max_packet_size: int | None = 16 * 1024 * 1024,
 ) -> dict[str, Any]:
     """Auto-detect and decode PCAP or PCAPNG bytes."""
     data = _bytes(value)
@@ -925,15 +927,18 @@ def parse_capture(
 def read_capture(
     path: str | os.PathLike[str],
     *,
-    max_file_size: int = 512 * 1024 * 1024,
-    max_packets: int = 100_000,
-    max_packet_size: int = 16 * 1024 * 1024,
+    max_file_size: int | None = 512 * 1024 * 1024,
+    max_packets: int | None = 100_000,
+    max_packet_size: int | None = 16 * 1024 * 1024,
 ) -> dict[str, Any]:
     """Read and parse a capture file with an explicit file-size limit."""
     capture_path = Path(path)
     size = capture_path.stat().st_size
-    if size > max_file_size:
+    if max_file_size is not None and size > max_file_size:
         raise ValueError(f"capture exceeds max_file_size={max_file_size}")
+    return parse_capture(
+        capture_path.read_bytes(), max_packets=max_packets, max_packet_size=max_packet_size
+    )
     return parse_capture(
         capture_path.read_bytes(), max_packets=max_packets, max_packet_size=max_packet_size
     )

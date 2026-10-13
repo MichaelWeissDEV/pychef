@@ -3,8 +3,6 @@
 from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
 from importlib.metadata import version as _distribution_version
 
-# Importing the package registers all built-in operations.
-from . import operations as _operations  # noqa: F401
 from .compatibility import CompatibilityReport, compatibility_report
 from .ctf import (
     aes_decrypt,
@@ -61,7 +59,7 @@ from .errors import (
     RecipeError,
     UnknownOperationError,
 )
-from .execution import ExecutionContext, ExecutionPolicy
+from .execution import ExecutionContext, ExecutionPolicy, NetworkPolicy
 from .packets import (
     json_safe,
     packet_json,
@@ -82,7 +80,9 @@ from .packets import (
 from .pipeline import Pipeline, PipelineTrace
 from .recipe import Chef, Recipe, bake
 from .registry import Operation, OperationRegistry, registry
+from .spec import OperationArgSpec, OperationSpec, get_operation_spec, list_operation_specs
 from .types import BakeResult, Data, RecipeConfig, RecipeStep, TraceStep
+from .worker import IsolatedWorker, bake_isolated
 
 __all__ = [
     "BakeResult",
@@ -94,10 +94,14 @@ __all__ = [
     "ExecutionPolicy",
     "ExecutionTimeoutError",
     "InvalidOperationArgumentsError",
+    "IsolatedWorker",
+    "NetworkPolicy",
     "Operation",
+    "OperationArgSpec",
     "OperationError",
     "OperationPermissionError",
     "OperationRegistry",
+    "OperationSpec",
     "Pipeline",
     "PipelineTrace",
     "PyChefError",
@@ -112,6 +116,7 @@ __all__ = [
     "aes_gcm_decrypt",
     "aes_gcm_encrypt",
     "bake",
+    "bake_isolated",
     "chunks",
     "compatibility_report",
     "cyclic",
@@ -121,8 +126,10 @@ __all__ = [
     "digests",
     "encode_bytes",
     "flat",
+    "get_operation_spec",
     "hexdump",
     "json_safe",
+    "list_operation_specs",
     "list_operations",
     "md5",
     "p8",
@@ -180,3 +187,11 @@ except _PackageNotFoundError:
 def list_operations() -> tuple[str, ...]:
     """Return every registered operation name in stable alphabetical order."""
     return registry.names()
+
+
+def __getattr__(name: str) -> object:
+    if name == "operations":
+        from . import operations
+
+        return operations
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

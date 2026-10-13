@@ -229,7 +229,11 @@ def test_unresolvable_host(no_connect: Net, monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_header_injection_rejected() -> None:
     with pytest.raises(OperationError, match="Unsafe managed HTTP header"):
-        bake("", [{"op": "HTTP request", "args": ["GET", "http://x.test/", "Host: evil"]}])
+        bake(
+            "",
+            [{"op": "HTTP request", "args": ["GET", "http://x.test/", "Host: evil"]}],
+            policy=ExecutionPolicy.permissive(),
+        )
 
 
 # --- permissions -----------------------------------------------------------
@@ -274,6 +278,19 @@ def test_allow_network_policy_permits_request(net: Net) -> None:
     assert bake("", recipe, policy=ExecutionPolicy(allow_network=True)) == "hello"
 
 
-def test_legacy_default_without_policy_still_allows_network(net: Net) -> None:
+def test_default_without_policy_blocks_network(no_connect: Net) -> None:
+    no_connect.answers["example.test"] = [[PUBLIC_IP]]
+    with pytest.raises(OperationPermissionError):
+        bake("", [{"op": "HTTP request", "args": ["GET", "http://example.test/"]}])
+
+
+def test_permissive_policy_permits_network(net: Net) -> None:
     net.answers["example.test"] = [[PUBLIC_IP]]
-    assert bake("", [{"op": "HTTP request", "args": ["GET", "http://example.test/"]}]) == "hello"
+    assert (
+        bake(
+            "",
+            [{"op": "HTTP request", "args": ["GET", "http://example.test/"]}],
+            policy=ExecutionPolicy.permissive(),
+        )
+        == "hello"
+    )

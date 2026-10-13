@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .registry import registry
-
 TARGET_CYBERCHEF_VERSION = "11.3.0"
 TARGET_CYBERCHEF_COMMIT = "c56dd23358e948aff9f3f98913818e544227da13"
 UPSTREAM_OPERATION_NAMES = frozenset(
@@ -540,6 +538,8 @@ class CompatibilityReport:
 
 def compatibility_report() -> CompatibilityReport:
     """Compare the current registry with CyberChef 11.3.0."""
+    from .registry import registry
+
     registered = set(registry.names())
     return CompatibilityReport(
         target_version=TARGET_CYBERCHEF_VERSION,
