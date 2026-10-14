@@ -25,7 +25,7 @@ or
 uv add cyberchef-py
 ```
 
-Python 3.10 or newer is required. There are no runtime dependencies on Linux and macOS; on Windows the
+Pin a version in applications with `cyberchef-py==0.2.0`. Python 3.10-3.14 is supported. There are no runtime dependencies on Linux and macOS; on Windows the
 `tzdata` time zone database is installed automatically (Windows has no system copy).
 
 ```python
@@ -62,7 +62,7 @@ sha256("abc")  # 'ba7816bf...'
 run_operation("To Base64", b"Hello")  # any of the 502 operations
 ```
 
-See the [Direct operations guide](https://cyberchef-py.readthedocs.io/en/latest/direct-operations.html).
+See the [Direct operations guide](https://cyberchef-py.readthedocs.io/en/stable/direct-operations.html).
 
 ## Recipes
 
@@ -107,13 +107,15 @@ All 502 upstream operation names are registered ([COMPATIBILITY.md](COMPATIBILIT
 "Registered" means callable; it does **not** mean every option combination is
 byte-for-byte identical to CyberChef. Known broad boundaries (for example QR
 decoding, progressive JPEG, full OpenPGP interoperability) are listed in the
-[compatibility page](https://cyberchef-py.readthedocs.io/en/latest/compatibility.html).
+[compatibility page](https://cyberchef-py.readthedocs.io/en/stable/compatibility.html).
 PyChef is a library only: there is no GUI, web server, or JavaScript runtime.
 
 ## Documentation
 
 Full documentation, including the cookbook, API reference, and a page for every
-operation: [cyberchef-py.readthedocs.io](https://cyberchef-py.readthedocs.io/en/latest/).
+operation: [cyberchef-py.readthedocs.io](https://cyberchef-py.readthedocs.io/en/stable/).
+Documentation is versioned: `stable` (latest release), `latest` (development), and one
+per release tag such as `v0.2.0`. Changes are listed in the [changelog](CHANGELOG.md).
 Runnable scripts are in [examples](examples).
 
 ## Security notes

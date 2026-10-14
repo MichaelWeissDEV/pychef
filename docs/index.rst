@@ -24,6 +24,7 @@ Name coverage and exact option-level compatibility are reported separately; read
    :maxdepth: 2
    :caption: Getting started
 
+   installation
    getting-started
    choosing-an-api
    data-model
@@ -35,16 +36,25 @@ Name coverage and exact option-level compatibility are reported separately; read
    direct-operations
    recipes
    pipelines
+   execution-policies
    errors-and-safety
    examples
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Advanced usage
+
+   ctf-tools
+   packets
+   custom-registries
+   tracing
+   security
 
 .. toctree::
    :maxdepth: 2
    :caption: Cookbook
 
    cookbook
-   ctf-tools
-   packets
 
 .. toctree::
    :maxdepth: 3
@@ -52,6 +62,11 @@ Name coverage and exact option-level compatibility are reported separately; read
 
    api/index
    operations/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Compatibility
+
    compatibility
    attribution
 
@@ -62,6 +77,7 @@ Name coverage and exact option-level compatibility are reported separately; read
    development
    contributing
    faq
+   versions
 
 Indices
 -------

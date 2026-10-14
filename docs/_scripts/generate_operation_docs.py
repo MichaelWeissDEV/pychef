@@ -340,8 +340,22 @@ def operation_page(operation: Any, metadata: dict[str, Any]) -> str:
         f"   transform = Pipeline().then({operation.name!r}{then_args})\n"
         f"   result = transform({input_value})\n\n"
     )
-    parts.append(heading("Dedicated operation module", "-"))
+    parts.append(heading("Direct call", "-"))
     parts.append(
+        "``pychef.ops.run_operation`` runs any registered operation as a plain function,\n"
+        "under the active :class:`~pychef.ExecutionPolicy` (safe defaults, no network):\n\n"
+        ".. code-block:: python\n\n"
+        "   from pychef.ops import run_operation\n\n"
+        f"   args = {args_literal}\n"
+        f"   result = run_operation({operation.name!r}, {input_value}, args=args)\n\n"
+        "Common operations also have typed helpers in :doc:`../../direct-operations`.\n\n"
+    )
+    parts.append(heading("Low-level operation module", "-"))
+    parts.append(
+        ".. warning::\n\n"
+        "   The module below is an internal implementation detail. It applies no execution\n"
+        "   policy, resource limits, or error sanitization; prefer ``bake()``, ``Pipeline``,\n"
+        "   or ``pychef.ops`` for application code.\n\n"
         "The registered entry point lives in\n"
         f"``pychef.operations.by_operation.{module_name}``. Direct calls\n"
         "receive the input value and a positional argument tuple:\n\n"

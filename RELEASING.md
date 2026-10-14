@@ -105,7 +105,10 @@ incorrect, increment the version and publish a new release.
 
 ## Documentation versions
 
-Read the Docs builds `latest` from the default branch (development state) and
-`stable` from the newest release tag. Activate new tags in the Read the Docs
-project's version list. Do not link `latest` pages from release notes of older
-versions; use versioned URLs such as `/en/vX.Y.Z/`.
+Read the Docs builds `latest` from `main` (development), `stable` from the newest
+release tag, and one permanent version per tag (`v0.2.0`). In the Read the Docs project:
+activate new `v*` tags (enable "automation rules" for tags, or activate manually under
+Versions), keep `stable` pointing at the newest release, set the default version to
+`stable`, and enable "build pull requests". After retagging, trigger a rebuild of the
+tag version and confirm that `/en/vX.Y.Z/` shows the expected version in its title.
+Never link `latest` pages from release notes; use `/en/vX.Y.Z/` URLs.

@@ -237,8 +237,29 @@ Pipeline example
    transform = Pipeline().then('Lorenz', *args)
    result = transform("example")
 
-Dedicated operation module
+Direct call
+-----------
+
+``pychef.ops.run_operation`` runs any registered operation as a plain function,
+under the active :class:`~pychef.ExecutionPolicy` (safe defaults, no network):
+
+.. code-block:: python
+
+   from pychef.ops import run_operation
+
+   args = ['SZ40', 'KH Pattern', False, 'Send', 'Plaintext', 'Plaintext', '5/8/9', 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, '.x...xx.x.x..xxx.x.x.xxxx.x.x.x.x.x..x.xx.x', '.xx.x.xxx..x.x.x..x.xx.x.xxx.x....x.xx.x.x.x..x', '.x.x.x..xxx....x.x.xx.x.x.x..xxx.x.x..x.x.xx..x.x.x', '.xx...xxxxx.x.x.xx...x.xx.x.x..x.x.xx.x..x.x.x.x.x.x.', 'xx...xx.x..x.xx.x...x.x.x.x.x.x.x.x.xx..xxxx.x.x...xx.x..x.', 'x.x.x.x.x.x...x.x.x...x.x.x...x.x....', '.xxxx.xxxx.xxx.xxxx.xx....xxx.xxxx.xxxx.xxxx.xxxx.xxx.xxxx...', '.x...xxx.x.xxxx.x...x.x..xxx....xx.xxxx..', 'x..xxx...x.xxxx..xx..x..xx.xx..', '..xx..x.xxx...xx...xx..xx.xx.', 'xx..x..xxxx..xx.xxx....x..', 'xx..xx....xxxx.x..x.x..']
+   result = run_operation('Lorenz', "example", args=args)
+
+Common operations also have typed helpers in :doc:`../../direct-operations`.
+
+Low-level operation module
 --------------------------
+
+.. warning::
+
+   The module below is an internal implementation detail. It applies no execution
+   policy, resource limits, or error sanitization; prefer ``bake()``, ``Pipeline``,
+   or ``pychef.ops`` for application code.
 
 The registered entry point lives in
 ``pychef.operations.by_operation.lorenz``. Direct calls

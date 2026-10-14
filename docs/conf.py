@@ -51,10 +51,22 @@ napoleon_numpy_docstring = False
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 
+# "Edit on GitHub" links and the version flyout (provided by Read the Docs).
+html_context = {
+    "display_github": True,
+    "github_user": "MichaelWeissDEV",
+    "github_repo": "pychef",
+    "github_version": "main",
+    "conf_py_path": "/docs/",
+}
+
 html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 if os.environ.get("READTHEDOCS") == "True":
-    html_context = {
-        "READTHEDOCS": True,
-        "current_version": os.environ.get("READTHEDOCS_VERSION", "latest"),
-        "version_slug": os.environ.get("READTHEDOCS_VERSION", "latest"),
-    }
+    html_context.update(
+        {
+            "READTHEDOCS": True,
+            "github_version": os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main"),
+            "current_version": os.environ.get("READTHEDOCS_VERSION", "latest"),
+            "version_slug": os.environ.get("READTHEDOCS_VERSION", "latest"),
+        }
+    )

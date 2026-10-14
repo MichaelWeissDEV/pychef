@@ -103,8 +103,29 @@ Pipeline example
    transform = Pipeline().then('ROT13 Brute Force', *args)
    result = transform(b"example")
 
-Dedicated operation module
+Direct call
+-----------
+
+``pychef.ops.run_operation`` runs any registered operation as a plain function,
+under the active :class:`~pychef.ExecutionPolicy` (safe defaults, no network):
+
+.. code-block:: python
+
+   from pychef.ops import run_operation
+
+   args = [True, True, False, 100, 0, True, '']
+   result = run_operation('ROT13 Brute Force', b"example", args=args)
+
+Common operations also have typed helpers in :doc:`../../direct-operations`.
+
+Low-level operation module
 --------------------------
+
+.. warning::
+
+   The module below is an internal implementation detail. It applies no execution
+   policy, resource limits, or error sanitization; prefer ``bake()``, ``Pipeline``,
+   or ``pychef.ops`` for application code.
 
 The registered entry point lives in
 ``pychef.operations.by_operation.rot13_brute_force``. Direct calls

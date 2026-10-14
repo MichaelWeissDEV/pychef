@@ -115,8 +115,29 @@ Pipeline example
    transform = Pipeline().then('Regular expression', *args)
    result = transform("example")
 
-Dedicated operation module
+Direct call
+-----------
+
+``pychef.ops.run_operation`` runs any registered operation as a plain function,
+under the active :class:`~pychef.ExecutionPolicy` (safe defaults, no network):
+
+.. code-block:: python
+
+   from pychef.ops import run_operation
+
+   args = ['[\n                    {\n                        name: "User defined",\n                        value: ""\n                    },\n                    {\n                        name: "IPv4 address",\n                        value: "(?:(?:\\\\d|[01]?\\\\d\\\\d|2[0-4]\\\\d|25[0-5])\\\\.){3}(?:25[0-5]|2[0-4]\\\\d|[01]?\\\\d\\\\d|\\\\d)(?:\\\\/\\\\d{1,2})?"\n                    },\n                    {\n                        name: "IPv6 address",\n                        value: "((?=.*::)(?!.*::.+::)(::)?([\\\\dA-Fa-f]{1,4}:(:|\\\\b)|){5}|([\\\\dA-Fa-f]{1,4}:){6})((([\\\\dA-Fa-f]{1,4}((?!\\\\3)::|:\\\\b|(?![\\\\dA-Fa-f])))|(?!\\\\2\\\\3)){2}|(((2[0-4]|1\\\\d|[1-9])?\\\\d|25[0-5])\\\\.?\\\\b){4})"\n                    },\n                    {\n                        name: "Email address",\n                        value: EMAIL_REGEX.source // We use a different regex library, so just take the source regex string here\n                    },\n                    {\n                        name: "URL",\n                        value: "([A-Za-z]+://)([-\\\\w]+(?:\\\\.\\\\w[-\\\\w]*)+)(:\\\\d+)?(/[^.!,?\\"<>\\\\[\\\\]{}\\\\s\\\\x7F-\\\\xFF]*(?:[.!,?]+[^.!,?\\"<>\\\\[\\\\]{}\\\\s\\\\x7F-\\\\xFF]+)*)?"\n                    },\n                    {\n                        name: "Domain",\n                        value: "\\\\b((?=[a-z0-9-]{1,63}\\\\.)(xn--)?[a-z0-9]+(-[a-z0-9]+)*\\\\.)+[a-z]{2,63}\\\\b"\n                    },\n                    {\n                        name: "Windows file path",\n                        value: "([A-Za-z]):\\\\\\\\((?:[A-Za-z\\\\d][A-Za-z\\\\d\\\\- \\\\x27_\\\\(\\\\)~]{0,61}\\\\\\\\?)*[A-Za-z\\\\d][A-Za-z\\\\d\\\\- \\\\x27_\\\\(\\\\)]{0,61})(\\\\.[A-Za-z\\\\d]{1,6})?"\n                    },\n                    {\n                        name: "UNIX file path",\n                        value: "(?:/[A-Za-z\\\\d.][A-Za-z\\\\d\\\\-.]{0,61})+"\n                    },\n                    {\n                        name: "MAC address",\n                        value: "[A-Fa-f\\\\d]{2}(?:[:-][A-Fa-f\\\\d]{2}){5}"\n                    },\n                    {\n                        name: "UUID",\n                        value: "[0-9a-fA-F]{8}\\\\b-[0-9a-fA-F]{4}\\\\b-[0-9a-fA-F]{4}\\\\b-[0-9a-fA-F]{4}\\\\b-[0-9a-fA-F]{12}"\n                    },\n                    {\n                        name: "Date (yyyy-mm-dd)",\n                        value: "((?:19|20)\\\\d\\\\d)[- /.](0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])"\n                    },\n                    {\n                        name: "Date (dd/mm/yyyy)",\n                        value: "(0[1-9]|[12][0-9]|3[01])[- /.](0[1-9]|1[012])[- /.]((?:19|20)\\\\d\\\\d)"\n                    },\n                    {\n                        name: "Date (mm/dd/yyyy)",\n                        value: "(0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])[- /.]((?:19|20)\\\\d\\\\d)"\n                    },\n                    {\n                        name: "Strings",\n                        value: "[A-Za-z\\\\d/\\\\-:.,_$%\\\\x27\\"()<>= !\\\\[\\\\]{}@]{4,}"\n                    },\n                ]', '', True, True, False, False, False, False, 'List matches']
+   result = run_operation('Regular expression', "example", args=args)
+
+Common operations also have typed helpers in :doc:`../../direct-operations`.
+
+Low-level operation module
 --------------------------
+
+.. warning::
+
+   The module below is an internal implementation detail. It applies no execution
+   policy, resource limits, or error sanitization; prefer ``bake()``, ``Pipeline``,
+   or ``pychef.ops`` for application code.
 
 The registered entry point lives in
 ``pychef.operations.by_operation.regular_expression``. Direct calls

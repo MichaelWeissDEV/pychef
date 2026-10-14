@@ -8,7 +8,15 @@ from pathlib import Path
 import pytest
 
 DOCS = Path(__file__).resolve().parents[1] / "docs"
-PAGES = ["getting-started", "choosing-an-api", "direct-operations", "cookbook"]
+PAGES = [
+    "getting-started",
+    "choosing-an-api",
+    "direct-operations",
+    "cookbook",
+    "execution-policies",
+    "custom-registries",
+    "tracing",
+]
 
 
 @pytest.mark.parametrize("page", PAGES)

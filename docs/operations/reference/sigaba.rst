@@ -285,8 +285,29 @@ Pipeline example
    transform = Pipeline().then('SIGABA', *args)
    result = transform("example")
 
-Dedicated operation module
+Direct call
+-----------
+
+``pychef.ops.run_operation`` runs any registered operation as a plain function,
+under the active :class:`~pychef.ExecutionPolicy` (safe defaults, no network):
+
+.. code-block:: python
+
+   from pychef.ops import run_operation
+
+   args = ['SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SRGWANHPJZFXVIDQCEUKBYOLMT', False, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '6201348957', '0123456789', '6201348957', '0123456789', '6201348957', '0123456789', '6201348957', '0123456789', '6201348957', '0123456789', 'Encrypt']
+   result = run_operation('SIGABA', "example", args=args)
+
+Common operations also have typed helpers in :doc:`../../direct-operations`.
+
+Low-level operation module
 --------------------------
+
+.. warning::
+
+   The module below is an internal implementation detail. It applies no execution
+   policy, resource limits, or error sanitization; prefer ``bake()``, ``Pipeline``,
+   or ``pychef.ops`` for application code.
 
 The registered entry point lives in
 ``pychef.operations.by_operation.sigaba``. Direct calls

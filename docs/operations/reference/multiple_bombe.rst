@@ -105,8 +105,29 @@ Pipeline example
    transform = Pipeline().then('Multiple Bombe', *args)
    result = transform("example")
 
-Dedicated operation module
+Direct call
+-----------
+
+``pychef.ops.run_operation`` runs any registered operation as a plain function,
+under the active :class:`~pychef.ExecutionPolicy` (safe defaults, no network):
+
+.. code-block:: python
+
+   from pychef.ops import run_operation
+
+   args = ['[\n                    {\n                        name: "German Service Enigma (First - 3 rotor)",\n                        value: [\n                            rotorsFormat(ROTORS, 0, 5),\n                            "",\n                            rotorsFormat(REFLECTORS, 0, 1)\n                        ]\n                    },\n                    {\n                        name: "German Service Enigma (Second - 3 rotor)",\n                        value: [\n                            rotorsFormat(ROTORS, 0, 8),\n                            "",\n                            rotorsFormat(REFLECTORS, 0, 2)\n                        ]\n                    },\n                    {\n                        name: "German Service Enigma (Third - 4 rotor)",\n                        value: [\n                            rotorsFormat(ROTORS, 0, 8),\n                            rotorsFormat(ROTORS_FOURTH, 1, 2),\n                            rotorsFormat(REFLECTORS, 2, 3)\n                        ]\n                    },\n                    {\n                        name: "German Service Enigma (Fourth - 4 rotor)",\n                        value: [\n                            rotorsFormat(ROTORS, 0, 8),\n                            rotorsFormat(ROTORS_FOURTH, 1, 3),\n                            rotorsFormat(REFLECTORS, 2, 4)\n                        ]\n                    },\n                    {\n                        name: "User defined",\n                        value: ["", "", ""]\n                    },\n                ]', '', '', '', '', 0, True]
+   result = run_operation('Multiple Bombe', "example", args=args)
+
+Common operations also have typed helpers in :doc:`../../direct-operations`.
+
+Low-level operation module
 --------------------------
+
+.. warning::
+
+   The module below is an internal implementation detail. It applies no execution
+   policy, resource limits, or error sanitization; prefer ``bake()``, ``Pipeline``,
+   or ``pychef.ops`` for application code.
 
 The registered entry point lives in
 ``pychef.operations.by_operation.multiple_bombe``. Direct calls
