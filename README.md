@@ -219,30 +219,39 @@ Streebog, Whirlpool, RIPEMD, Twofish, GOST, CTPH, SSDEEP, CRC, JPEG baseline,
 GIF first-frame, and uncompressed TIFF paths now have real Python
 implementations and official vectors rather than compatibility placeholders.
 
-## Security and performance
+## Security and execution policy
 
-- There are no runtime dependencies and no subprocess or JavaScript bridge.
-- The package does not perform network access on import. Only explicit
-  `HTTP request` and `DNS over HTTPS` operations access the network; they reject
-  credentials in URLs and local/private/reserved destinations.
-- JWT verification only accepts supported HMAC algorithms and rejects unsigned
-  or asymmetric-algorithm confusion.
-- Random generators use Python's `secrets` module.
-- Parsers validate lengths and fail through `OperationError` instead of silently
-  returning corrupt data.
-- PCAP/PCAPNG readers cap file, packet, and packet-count sizes and retain a
-  per-packet decode error instead of discarding the captured bytes.
-- A `Recipe` can be constructed once and reused to avoid repeat parsing.
-- A `Pipeline` is immutable and can likewise be constructed once and reused.
+PyChef offers fine-grained execution safety and resource controls:
 
-Pure-Python cryptographic implementations are provided for compatibility and
-testing; use a professionally audited cryptographic package for production key
-protection or protocol security.
+- **Configurable Execution Policies**:
+  `ExecutionPolicy.safe()` is the default profile, with conservative budgets and network access completely disabled. Other profiles include `untrusted()`, `unrestricted()`, and `permissive()`.
+  Limits can be explicitly customized or disabled (`None` disables a numeric limit):
+
+  ```python
+  from pychef import ExecutionPolicy, NetworkPolicy, bake
+
+  policy = ExecutionPolicy.safe().with_overrides(
+      max_memory_bytes=64 * 1024**2,
+      max_steps=5_000,
+      network=NetworkPolicy.public_only(
+          timeout_seconds=5.0,
+          max_redirects=3,
+      ),
+  )
+  result = bake(data, recipe, policy=policy)
+  ```
+
+- **SSRF & DNS-Pinning Protection**:
+  Network operations validate IP destinations against private, loopback, link-local, and reserved ranges. Socket connections are pinned directly to validated IP addresses to prevent DNS rebinding. Redirects re-validate every hop and automatically strip sensitive headers across origins.
+- **Process Isolation (`IsolatedWorker`)**:
+  Recipes can be executed in an isolated child process via `IsolatedWorker` or `bake_isolated()`. On Linux, hard OS-level memory limits (`RLIMIT_AS`/`RLIMIT_DATA`) can be enforced.
+- **Secret Redaction**:
+  Exceptions (`OperationError`, `PyChefError`) sanitize error messages and arguments to prevent leaking sensitive keys, passwords, or tokens in logs or serialization.
 
 ## Development
 
 Python 3.10 or newer and [uv](https://docs.astral.sh/uv/) are required for
-development only:
+development:
 
 ```console
 uv sync --dev
@@ -253,8 +262,8 @@ uv run ty check
 uv build
 ```
 
-Pytest enforces branch coverage of at least 75%; the current suite contains
-more than 850 tests and reports 84% branch coverage. Ruff handles
+Pytest enforces branch coverage of at least 75%; the test suite contains
+over 1,120 tests and exceeds 85% branch coverage. Ruff handles
 formatting and linting, and `ty` checks the typed public API. The published
 wheel has no runtime dependencies.
 

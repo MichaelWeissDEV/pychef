@@ -5,13 +5,17 @@ from __future__ import annotations
 import multiprocessing as mp
 import pickle
 import sys
+import threading
 from contextlib import suppress
 from time import perf_counter
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from .errors import ExecutionLimitError, ExecutionTimeoutError, PyChefError
 from .execution import ExecutionContext, ExecutionPolicy
 from .types import BakeResult, Data, RecipeConfig
+
+if TYPE_CHECKING:
+    from .registry import OperationRegistry
 
 _UNSET: Any = object()
 
@@ -24,6 +28,7 @@ def _worker_entry(
     hard_memory_limit_bytes: int | None,
     return_type: Literal["str", "bytes"] | None,
     trace: bool,
+    registry: Any = None,
 ) -> None:
     """Entry point executed in an isolated child process."""
     try:
@@ -44,10 +49,12 @@ def _worker_entry(
                 raise RuntimeError(f"Failed to enforce OS hard memory limit: {exc}") from exc
 
         from .recipe import Recipe, _convert_result
+        from .registry import registry as default_registry
 
+        eff_registry = registry if registry is not None else default_registry
         context = ExecutionContext(policy=policy, trace_enabled=trace)
         recipe = Recipe(config)
-        result, progress = recipe.execute(value, context=context)
+        result, progress = recipe.execute(value, operation_registry=eff_registry, context=context)
         converted = _convert_result(result, return_type)
         conn.send(
             {
@@ -97,6 +104,7 @@ class IsolatedWorker:
         timeout: float | None = None,
         policy: ExecutionPolicy | None = None,
         hard_memory_limit_bytes: int | None = None,
+        operation_registry: OperationRegistry | None = None,
     ) -> None:
         if hard_memory_limit_bytes is not None:
             if not self.is_hard_memory_limit_supported():
@@ -110,8 +118,10 @@ class IsolatedWorker:
         self.timeout = timeout
         self.policy = policy or ExecutionPolicy.safe()
         self.hard_memory_limit_bytes = hard_memory_limit_bytes
+        self.registry = operation_registry
         self._current_process: Any = None
         self._closed: bool = False
+        self._lock = threading.Lock()
 
     @classmethod
     def is_hard_memory_limit_supported(cls) -> bool:
@@ -152,10 +162,40 @@ class IsolatedWorker:
         hard_memory_limit_bytes: int | object | None = _UNSET,
         return_type: Literal["str", "bytes"] | None = None,
         trace: bool = False,
+        operation_registry: OperationRegistry | None = None,
     ) -> BakeResult:
         if self._closed:
             raise RuntimeError("IsolatedWorker is closed")
 
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError(
+                "IsolatedWorker instance does not support concurrent execution. "
+                "Use separate IsolatedWorker instances per thread."
+            )
+        try:
+            return self._run_internal(
+                value,
+                recipe,
+                policy=policy,
+                hard_memory_limit_bytes=hard_memory_limit_bytes,
+                return_type=return_type,
+                trace=trace,
+                operation_registry=operation_registry,
+            )
+        finally:
+            self._lock.release()
+
+    def _run_internal(
+        self,
+        value: Data,
+        recipe: RecipeConfig | Any,
+        *,
+        policy: ExecutionPolicy | None = None,
+        hard_memory_limit_bytes: int | object | None = _UNSET,
+        return_type: Literal["str", "bytes"] | None = None,
+        trace: bool = False,
+        operation_registry: OperationRegistry | None = None,
+    ) -> BakeResult:
         if hard_memory_limit_bytes is _UNSET:
             eff_hard_limit = self.hard_memory_limit_bytes
         else:
@@ -176,6 +216,7 @@ class IsolatedWorker:
                 )
 
         eff_policy = policy or self.policy
+        eff_registry = operation_registry or self.registry
         # Extract serializable step definitions if Recipe instance
         config = recipe.steps if hasattr(recipe, "steps") else recipe
         ctx = mp.get_context("spawn")
@@ -188,10 +229,28 @@ class IsolatedWorker:
         started = perf_counter()
         process = ctx.Process(
             target=_worker_entry,
-            args=(child_conn, value, config, eff_policy, eff_hard_limit, return_type, trace),
+            args=(
+                child_conn,
+                value,
+                config,
+                eff_policy,
+                eff_hard_limit,
+                return_type,
+                trace,
+                eff_registry,
+            ),
         )
         self._current_process = process
-        process.start()
+        try:
+            process.start()
+        except Exception:
+            with suppress(OSError):
+                child_conn.close()
+                parent_conn.close()
+            self._terminate_process(process)
+            self._current_process = None
+            raise
+
         child_conn.close()
 
         payload: dict[str, Any] | None = None
@@ -220,10 +279,12 @@ class IsolatedWorker:
             process.join(timeout=1.0)
             exitcode = process.exitcode
             msg = f"Worker process terminated unexpectedly with exit code {exitcode}"
-            raise ExecutionLimitError(
-                "max_memory_bytes",
-                f"{msg} (likely exceeded OS memory limit or was killed by system)",
-            ) from None
+            if eff_hard_limit is not None and exitcode in (-9, 137):
+                raise ExecutionLimitError(
+                    "max_memory_bytes",
+                    f"{msg} (likely exceeded OS memory limit or was killed by system)",
+                ) from None
+            raise PyChefError(msg) from None
         finally:
             with suppress(OSError):
                 parent_conn.close()
@@ -258,15 +319,16 @@ class IsolatedWorker:
     def _terminate_process(process: Any) -> None:
         """Safely ensure child process is stopped and reaped without zombies."""
         try:
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=1.0)
+            if getattr(process, "_popen", None) is not None:
                 if process.is_alive():
-                    process.kill()
+                    process.terminate()
                     process.join(timeout=1.0)
-            else:
-                process.join(timeout=0.1)
-        except OSError:
+                    if process.is_alive():
+                        process.kill()
+                        process.join(timeout=1.0)
+                else:
+                    process.join(timeout=0.1)
+        except (OSError, AssertionError):
             pass
 
 
@@ -278,11 +340,18 @@ def bake_isolated(
     timeout: float | None = None,
     hard_memory_limit_bytes: int | None = None,
     return_type: Literal["str", "bytes"] | None = None,
+    operation_registry: OperationRegistry | None = None,
 ) -> Data:
     """Execute *recipe* on *value* in a separate worker process."""
     worker = IsolatedWorker(
         timeout=timeout,
         policy=policy,
         hard_memory_limit_bytes=hard_memory_limit_bytes,
+        operation_registry=operation_registry,
     )
-    return worker.run(value, recipe, return_type=return_type).result
+    return worker.run(
+        value,
+        recipe,
+        return_type=return_type,
+        operation_registry=operation_registry,
+    ).result

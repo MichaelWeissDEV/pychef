@@ -12,10 +12,10 @@ import urllib.error
 import urllib.request
 from http.client import HTTPMessage
 from typing import IO, Any, cast
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urljoin, urlparse, urlunparse
 
 from ..errors import OperationPermissionError
-from ..execution import NetworkPolicy, current_policy, normalize_host
+from ..execution import NetworkPolicy, PolicyDecision, current_policy, normalize_host
 from ..registry import implementation
 from ..types import Args, Data, to_text
 from ._utils import arg, char_rep, require_int
@@ -360,6 +360,17 @@ def _parse_http_url(value: str) -> tuple[str, str, int]:
     return parsed.scheme, parsed.hostname, port
 
 
+def _get_origin(value: str) -> tuple[str, str, int]:
+    """Return canonical origin tuple ``(scheme, host, port)`` for *value*."""
+    parsed = urlparse(value)
+    scheme = parsed.scheme.lower()
+    host = normalize_host(parsed.hostname or "")
+    port = parsed.port
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    return scheme, host, port
+
+
 def _get_network_policy() -> NetworkPolicy:
     policy = current_policy()
     if policy is not None:
@@ -372,8 +383,8 @@ def _resolve_with_policy(host: str, port: int, net_policy: NetworkPolicy) -> lis
     norm_host = normalize_host(host)
 
     # 1. Pre-resolution check on host and port
-    allowed, reason = net_policy.check_destination(host=norm_host, port=port)
-    if not allowed:
+    decision, reason = net_policy.evaluate_pre_resolution(host=norm_host, port=port)
+    if decision == PolicyDecision.DENY:
         if "blocked" in reason.lower() and net_policy.mode == "public_only":
             raise ValueError(reason)
         raise OperationPermissionError("HTTP request", reason)
@@ -395,7 +406,9 @@ def _resolve_with_policy(host: str, port: int, net_policy: NetworkPolicy) -> lis
             if (
                 normalize_host(text) in net_policy.denied_hosts
                 or any(
-                    ip in ipaddress.ip_network(s, strict=False) for s in net_policy.denied_subnets
+                    ip.version == ipaddress.ip_network(s, strict=False).version
+                    and ip in ipaddress.ip_network(s, strict=False)
+                    for s in net_policy.denied_subnets
                 )
                 or net_policy.mode == "disabled"
             ):
@@ -493,7 +506,8 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def __init__(self, net_policy: NetworkPolicy) -> None:
         super().__init__()
         self.net_policy = net_policy
-        object.__setattr__(self, "max_redirections", net_policy.max_redirects)
+        if net_policy.max_redirects is not None:
+            object.__setattr__(self, "max_redirections", net_policy.max_redirects)
 
     def redirect_request(
         self,
@@ -506,13 +520,91 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     ) -> urllib.request.Request | None:
         if not self.net_policy.allow_redirects:
             raise ValueError("HTTP redirects are disabled by network policy")
+        if self.net_policy.max_redirects == 0:
+            raise ValueError("HTTP redirects are disabled by network policy (max_redirects=0)")
+
         scheme, host, port = _parse_http_url(newurl)
-        allowed, reason = self.net_policy.check_destination(host=host, port=port, scheme=scheme)
-        if not allowed:
+        decision, reason = self.net_policy.evaluate_pre_resolution(
+            host=host, port=port, scheme=scheme
+        )
+        if decision == PolicyDecision.DENY:
             if "blocked" in reason.lower() and self.net_policy.mode == "public_only":
                 raise ValueError(reason)
             raise OperationPermissionError("HTTP request", reason)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is None:
+            return None
+
+        # Cross-Origin check: strip sensitive credentials if origin changes
+        old_origin = _get_origin(req.full_url)
+        new_origin = _get_origin(newurl)
+        if old_origin != new_origin:
+            sensitive = set(self.net_policy.sensitive_headers)
+            for h in list(new_req.headers.keys()):
+                if h.lower() in sensitive:
+                    del new_req.headers[h]
+            for h in list(new_req.unredirected_hdrs.keys()):
+                if h.lower() in sensitive:
+                    del new_req.unredirected_hdrs[h]
+
+        return new_req
+
+    def http_error_302(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+    ) -> Any:
+        if not self.net_policy.allow_redirects:
+            raise ValueError("HTTP redirects are disabled by network policy")
+        if self.net_policy.max_redirects == 0:
+            raise ValueError("HTTP redirects are disabled by network policy (max_redirects=0)")
+
+        if "location" in headers:
+            newurl = headers["location"]
+        elif "uri" in headers:
+            newurl = headers["uri"]
+        else:
+            return None
+
+        urlparts = urlparse(newurl)
+        if urlparts.scheme not in ("http", "https", "ftp", ""):
+            raise urllib.error.HTTPError(
+                newurl, code, f"{msg} - Redirection to url '{newurl}' is not allowed", headers, fp
+            )
+
+        if not urlparts.path and urlparts.netloc:
+            parts_list = list(urlparts)
+            parts_list[2] = "/"
+            newurl = urlunparse(parts_list)
+
+        newurl = quote(newurl, encoding="iso-8859-1", safe=":/?#[]@!$&'()*+,;=-_.~")
+        newurl = urljoin(req.full_url, newurl)
+
+        new = self.redirect_request(req, fp, code, msg, headers, newurl)
+        if new is None:
+            return None
+
+        count = getattr(req, "_pychef_redirect_count", 0) + 1
+        if self.net_policy.max_redirects is not None and count > self.net_policy.max_redirects:
+            raise ValueError(
+                f"HTTP redirect limit reached (max_redirects={self.net_policy.max_redirects})"
+            )
+        cast(Any, new)._pychef_redirect_count = count
+
+        if fp:
+            fp.read()
+            fp.close()
+
+        return self.parent.open(new, timeout=req.timeout)
+
+    http_error_301 = http_error_302
+    http_error_303 = http_error_302
+    http_error_307 = http_error_302
+    http_error_308 = http_error_302
 
 
 def _require_network_permission(net_policy: NetworkPolicy) -> None:

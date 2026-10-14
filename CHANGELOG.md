@@ -7,6 +7,33 @@ All notable changes to this project are documented here. Releases follow
 
 ### Added
 
+- **HTTP Redirect Hardening & Credential Protection**:
+  - Implemented origin normalization and verification across redirect chains (`_get_origin`).
+  - Automatically strip sensitive headers (`Authorization`, `Proxy-Authorization`, `Cookie`, `Cookie2`, and user-configured `sensitive_headers`) whenever an HTTP redirect crosses origin boundaries (scheme, port, or normalized host).
+  - Enforced per-hop destination policy re-evaluation in `_SafeRedirectHandler`.
+  - Added support for `max_redirects=None` (unbounded redirects) in `NetworkPolicy` by overcoming standard library urllib `None` comparison limitations.
+- **Enhanced SSRF & DNS-Pinning Protection**:
+  - Added `PolicyDecision` enum (`ALLOW`, `DENY`, `NEEDS_RESOLUTION`) and `NetworkPolicy.evaluate_pre_resolution()` to prevent premature DNS queries and properly resolve hostnames matching `allowed_subnets`.
+  - Added IPv6 mapped address unwrapping (`::ffff:x.x.x.x`, 6to4, NAT64) to strictly enforce IPv4 subnet and host deny lists against IPv6-mapped representations.
+  - Reject mixed DNS responses if any resolved IP violates the network policy.
+- **ExecutionPolicy Explicit Overrides & Sentinel Semantics**:
+  - Introduced `_UNSET` sentinel ensuring that explicit `None` arguments (e.g. `with_overrides(max_memory_bytes=None, allow_network=None)`) reliably disable limits rather than being overwritten by truthiness defaults.
+  - Added strict parameter validation rejecting invalid negative or non-integer limits.
+- **Error Handling & Data Confidentiality**:
+  - Added `safe_message` property to `PyChefError` and included it in structured `to_dict()` outputs.
+  - Enhanced `_sanitize_error_message()` across recipe and pipeline execution to recursively redact secrets from intermediate values, inputs, and credential patterns (`Bearer`, `Basic`, `cookie=`, `api_key:`, passwords).
+- **Cycle-Safe Pipeline Tracing & Memory Budgeting**:
+  - Implemented cycle-safe recursive container measurement (`_measure_trace_size`) preventing recursion errors on circular references and shared objects.
+  - Enhanced UTF-8 preview slicing (`_truncate_preview`) to cleanly truncate at character boundaries without splitting multi-byte code points.
+  - Charged actually stored preview bytes against `policy.max_trace_bytes` rather than logical input/output sizes.
+- **IsolatedWorker Hardening & Concurrency Protection**:
+  - Added internal concurrency lock preventing race conditions from concurrent `run()` calls on the same worker instance.
+  - Hardened process startup cleanup with try/finally to safely reap processes and close IPC pipes on initialization failure.
+  - Differentiated unexpected IPC pipe EOF to report `ExecutionLimitError("max_memory_bytes")` only when exit code indicates SIGKILL/OOM (`-9` or `137`) under an active hard limit, and `PyChefError` otherwise.
+  - Added support for passing custom `OperationRegistry` instances across worker processes.
+- **Flow Control Resource Guards**:
+  - Early delimiter and regex pattern size validation in `Fork` and `Subsection` against `policy.max_input_bytes`.
+  - Enforced recursion depth and branch limits on nested forks.
 - **Unified Execution Policies & Safety Profiles**:
   - `ExecutionPolicy.safe()` (default): Conservative budgets (512 MiB memory, 16 MiB input, 64 MiB output, 10k steps/branches, 30s deadline) and network disabled.
   - `ExecutionPolicy.untrusted()`: Stricter sandboxing for untrusted data.

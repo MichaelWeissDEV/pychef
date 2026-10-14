@@ -41,6 +41,11 @@ class PyChefError(Exception):
         """The chained original exception, if any."""
         return self.__cause__ or self.__context__
 
+    @property
+    def safe_message(self) -> str:
+        """Redacted, public-safe error message."""
+        return self.message
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serialisable description (no traceback, no arguments)."""
         cause = self.cause
@@ -48,6 +53,7 @@ class PyChefError(Exception):
             "error_code": self.error_code,
             "type": type(self).__name__,
             "message": self.message,
+            "safe_message": self.safe_message,
             "operation_name": self.operation_name,
             "step_index": self.step_index,
             "branch_path": list(self.branch_path) if self.branch_path is not None else None,

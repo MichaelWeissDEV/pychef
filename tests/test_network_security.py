@@ -6,7 +6,7 @@ import socket
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -427,3 +427,476 @@ def test_http_request_with_trailing_dot_hostname(net: Net) -> None:
         == "hello"
     )
     assert net.resolutions == ["example.test"]
+
+
+@pytest.fixture
+def two_servers() -> Iterator[tuple[int, int, dict[str, Any]]]:
+    recorded_headers_b: list[dict[str, str]] = []
+    recorded_headers_a: list[dict[str, str]] = []
+
+    class ServerAHandler(BaseHTTPRequestHandler):
+        port_b: int = 0
+
+        def do_GET(self) -> None:
+            hdrs = {k.lower(): v for k, v in self.headers.items()}
+            recorded_headers_a.append(hdrs)
+            if self.path == "/redirect-to-b":
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{self.port_b}/target")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif self.path == "/redirect-same-origin":
+                port = cast("tuple[Any, int]", self.server.server_address)[1]
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{port}/same-target")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif self.path == "/redirect-chain":
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{self.port_b}/redirect-back-to-a")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif self.path == "/redirect-loop-a":
+                port = cast("tuple[Any, int]", self.server.server_address)[1]
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{port}/redirect-loop-b")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            elif self.path == "/redirect-loop-b":
+                port = cast("tuple[Any, int]", self.server.server_address)[1]
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{port}/redirect-loop-a")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Length", "5")
+                self.end_headers()
+                self.wfile.write(b"hello")
+
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    class ServerBHandler(BaseHTTPRequestHandler):
+        port_a: int = 0
+
+        def do_GET(self) -> None:
+            hdrs = {k.lower(): v for k, v in self.headers.items()}
+            recorded_headers_b.append(hdrs)
+            if self.path == "/redirect-back-to-a":
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{self.port_a}/final-target")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Length", "8")
+                self.end_headers()
+                self.wfile.write(b"server b")
+
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    httpd_a = HTTPServer(("127.0.0.1", 0), ServerAHandler)
+    httpd_b = HTTPServer(("127.0.0.1", 0), ServerBHandler)
+    port_a = httpd_a.server_address[1]
+    port_b = httpd_b.server_address[1]
+    ServerAHandler.port_b = port_b
+    ServerBHandler.port_a = port_a
+
+    thread_a = threading.Thread(target=httpd_a.serve_forever, daemon=True)
+    thread_b = threading.Thread(target=httpd_b.serve_forever, daemon=True)
+    thread_a.start()
+    thread_b.start()
+
+    info = {
+        "headers_a": recorded_headers_a,
+        "headers_b": recorded_headers_b,
+    }
+    yield port_a, port_b, info
+
+    httpd_a.shutdown()
+    httpd_b.shutdown()
+    httpd_a.server_close()
+    httpd_b.server_close()
+
+
+def test_redirect_same_origin_preserves_authorization(
+    two_servers: tuple[int, int, dict[str, Any]],
+) -> None:
+    port_a, _, info = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted())
+    headers = "Authorization: Bearer TEST_TOKEN_123"
+    result = bake(
+        "",
+        [
+            {
+                "op": "HTTP request",
+                "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-same-origin", headers],
+            }
+        ],
+        policy=policy,
+    )
+    assert result == "hello"
+    assert len(info["headers_a"]) >= 2
+    target_headers = info["headers_a"][-1]
+    assert target_headers.get("authorization") == "Bearer TEST_TOKEN_123"
+
+
+def test_redirect_cross_origin_strips_authorization(
+    two_servers: tuple[int, int, dict[str, Any]],
+) -> None:
+    port_a, _, info = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted())
+    headers = "Authorization: Bearer SECRET_TOKEN_123"
+    result = bake(
+        "",
+        [
+            {
+                "op": "HTTP request",
+                "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-to-b", headers],
+            }
+        ],
+        policy=policy,
+    )
+    assert result == "server b"
+    assert len(info["headers_b"]) >= 1
+    target_headers = info["headers_b"][-1]
+    assert "authorization" not in target_headers
+
+
+def test_redirect_cross_origin_strips_cookie(
+    two_servers: tuple[int, int, dict[str, Any]],
+) -> None:
+    port_a, _, info = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted())
+    headers = "Cookie: session=SECRET_COOKIE_123\nCookie2: secret=abc"
+    result = bake(
+        "",
+        [
+            {
+                "op": "HTTP request",
+                "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-to-b", headers],
+            }
+        ],
+        policy=policy,
+    )
+    assert result == "server b"
+    assert len(info["headers_b"]) >= 1
+    target_headers = info["headers_b"][-1]
+    assert "cookie" not in target_headers
+    assert "cookie2" not in target_headers
+
+
+def test_redirect_cross_origin_strips_proxy_authorization(
+    two_servers: tuple[int, int, dict[str, Any]],
+) -> None:
+    port_a, _, info = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted())
+    headers = "Proxy-Authorization: Basic c2VjcmV0OnBhc3M="
+    result = bake(
+        "",
+        [
+            {
+                "op": "HTTP request",
+                "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-to-b", headers],
+            }
+        ],
+        policy=policy,
+    )
+    assert result == "server b"
+    assert len(info["headers_b"]) >= 1
+    target_headers = info["headers_b"][-1]
+    assert "proxy-authorization" not in target_headers
+
+
+def test_redirect_cross_origin_strips_configured_sensitive_header(
+    two_servers: tuple[int, int, dict[str, Any]],
+) -> None:
+    port_a, _, info = two_servers
+    policy = ExecutionPolicy.safe(
+        network=NetworkPolicy.unrestricted(
+            sensitive_headers=("authorization", "cookie", "x-api-key")
+        )
+    )
+    headers = "X-API-Key: SECRET_API_KEY_123"
+    result = bake(
+        "",
+        [
+            {
+                "op": "HTTP request",
+                "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-to-b", headers],
+            }
+        ],
+        policy=policy,
+    )
+    assert result == "server b"
+    assert len(info["headers_b"]) >= 1
+    target_headers = info["headers_b"][-1]
+    assert "x-api-key" not in target_headers
+
+
+def test_redirect_different_port_is_cross_origin() -> None:
+    from pychef.operations.network import _get_origin
+
+    assert _get_origin("http://127.0.0.1:8080") != _get_origin("http://127.0.0.1:8081")
+
+
+def test_redirect_different_scheme_is_cross_origin() -> None:
+    from pychef.operations.network import _get_origin
+
+    assert _get_origin("http://example.com") != _get_origin("https://example.com")
+
+
+def test_redirect_same_host_explicit_default_port() -> None:
+    from pychef.operations.network import _get_origin
+
+    assert _get_origin("http://example.com:80") == _get_origin("http://example.com")
+    assert _get_origin("https://example.com:443") == _get_origin("https://example.com")
+
+
+def test_redirect_idna_origin_normalization() -> None:
+    from pychef.operations.network import _get_origin
+
+    assert _get_origin("http://München.de") == _get_origin("http://xn--mnchen-3ya.de")
+    assert _get_origin("http://EXAMPLE.COM.") == _get_origin("http://example.com")
+
+
+def test_redirect_credentials_do_not_reappear(
+    two_servers: tuple[int, int, dict[str, Any]],
+) -> None:
+    port_a, _, info = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted())
+    headers = "Authorization: Bearer SECRET_CHAIN_123"
+    result = bake(
+        "",
+        [
+            {
+                "op": "HTTP request",
+                "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-chain", headers],
+            }
+        ],
+        policy=policy,
+    )
+    assert result == "hello"
+    # Headers on server B must not have authorization
+    assert "authorization" not in info["headers_b"][-1]
+    # Headers on return to server A must NOT have restored authorization
+    assert "authorization" not in info["headers_a"][-1]
+
+
+def test_redirect_to_denied_host_never_connects(no_connect: Net) -> None:
+    import urllib.request
+
+    from pychef.operations.network import _SafeRedirectHandler
+
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted(denied_hosts=("denied.test",)))
+    handler = _SafeRedirectHandler(policy.network)
+    req = urllib.request.Request("http://allowed.test/start")
+    with pytest.raises(OperationPermissionError) as exc_info:
+        cast(Any, handler).redirect_request(
+            req, None, 302, "Found", {}, "http://denied.test/target"
+        )
+    assert "denied" in str(exc_info.value).lower()
+    assert no_connect.connections == []
+
+
+def test_redirect_to_denied_subnet_never_connects(net: Net) -> None:
+    net.answers["allowed.test"] = [[PUBLIC_IP]]
+    net.answers["sub-denied.test"] = [["10.5.5.5"]]
+    policy = ExecutionPolicy.safe(
+        network=NetworkPolicy.unrestricted(denied_subnets=("10.0.0.0/8",))
+    )
+    from pychef.operations.network import _resolve_with_policy
+
+    with pytest.raises(OperationPermissionError) as exc_info:
+        _resolve_with_policy("sub-denied.test", 80, policy.network)
+    assert "denied subnet" in str(exc_info.value).lower()
+
+
+def test_redirect_chain_revalidates_every_target(no_connect: Net) -> None:
+    import urllib.request
+
+    from pychef.operations.network import _SafeRedirectHandler
+
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted(denied_hosts=("evil.test",)))
+    handler = _SafeRedirectHandler(policy.network)
+    req = urllib.request.Request("http://hop1.test/path")
+    # hop 1 to hop 2 is allowed
+    new_req = cast(Any, handler).redirect_request(
+        req, None, 302, "Found", {}, "http://hop2.test/path"
+    )
+    assert new_req is not None
+    # hop 2 to evil.test is denied
+    with pytest.raises(OperationPermissionError):
+        cast(Any, handler).redirect_request(
+            new_req, None, 302, "Found", {}, "http://evil.test/path"
+        )
+
+
+def test_disabled_mode_allowed_subnet_resolves_hostname(net: Net) -> None:
+    net.answers["internal.test"] = [["10.10.1.20"]]
+    policy = ExecutionPolicy.safe(
+        network=NetworkPolicy(mode="disabled", allowed_subnets=("10.10.0.0/16",))
+    )
+    result = bake(
+        "",
+        [{"op": "HTTP request", "args": ["GET", "http://internal.test/"]}],
+        policy=policy,
+    )
+    assert result == "hello"
+    assert "internal.test" in net.resolutions
+
+
+def test_disabled_mode_nonmatching_subnet_blocks(net: Net) -> None:
+    net.answers["other.test"] = [["192.168.1.1"]]
+    policy = ExecutionPolicy.safe(
+        network=NetworkPolicy(mode="disabled", allowed_subnets=("10.10.0.0/16",))
+    )
+    with pytest.raises(OperationError) as exc_info:
+        bake(
+            "",
+            [{"op": "HTTP request", "args": ["GET", "http://other.test/"]}],
+            policy=policy,
+        )
+    err = str(exc_info.value).lower()
+    assert "not permitted" in err or "disabled" in err
+
+
+def test_disabled_mode_without_exceptions_skips_dns(no_connect: Net) -> None:
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.disabled())
+    with pytest.raises(OperationError):
+        bake(
+            "",
+            [{"op": "HTTP request", "args": ["GET", "http://no-dns.test/"]}],
+            policy=policy,
+        )
+    assert no_connect.resolutions == []
+
+
+def test_allowed_host_denied_ip_blocks(net: Net) -> None:
+    net.answers["service.example"] = [["10.1.2.3"]]
+    policy = ExecutionPolicy.safe(
+        network=NetworkPolicy(
+            mode="public_only",
+            allowed_hosts=("service.example",),
+            denied_subnets=("10.0.0.0/8",),
+        )
+    )
+    with pytest.raises(OperationError) as exc_info:
+        bake(
+            "",
+            [{"op": "HTTP request", "args": ["GET", "http://service.example/"]}],
+            policy=policy,
+        )
+    assert "denied subnet" in str(exc_info.value).lower()
+
+
+def test_allowed_subnet_denied_subnet_blocks() -> None:
+    policy = NetworkPolicy(
+        mode="unrestricted",
+        allowed_subnets=("10.0.0.0/8",),
+        denied_subnets=("10.1.0.0/16",),
+    )
+    # Deny wins over allow
+    allowed, reason = policy.check_destination("host.test", ip="10.1.2.3")
+    assert allowed is False
+    assert "denied subnet" in reason.lower()
+
+
+def test_dns_mixed_allowed_denied_answers(net: Net) -> None:
+    net.answers["mixed.test"] = [[PUBLIC_IP, "10.0.0.1"]]
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.public_only())
+    with pytest.raises(OperationError):
+        bake(
+            "",
+            [{"op": "HTTP request", "args": ["GET", "http://mixed.test/"]}],
+            policy=policy,
+        )
+
+
+def test_dns_rebinding_still_pinned(net: Net) -> None:
+    net.answers["rebind.test"] = [[PUBLIC_IP], ["10.0.0.1"]]
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.public_only())
+    result = bake(
+        "",
+        [{"op": "HTTP request", "args": ["GET", "http://rebind.test/"]}],
+        policy=policy,
+    )
+    assert result == "hello"
+    assert net.connections[0][0] == PUBLIC_IP
+
+
+def test_ipv4_mapped_ipv6_private_denied() -> None:
+    policy = NetworkPolicy.public_only()
+    assert policy.check_destination("[::ffff:127.0.0.1]")[0] is False
+    assert policy.check_destination("[::ffff:10.0.0.1]")[0] is False
+    policy_unrestricted = NetworkPolicy.unrestricted(denied_subnets=("127.0.0.0/8",))
+    assert policy_unrestricted.check_destination("[::ffff:127.0.0.1]")[0] is False
+
+
+def test_ipv6_loopback_explicitly_allowed() -> None:
+    policy = NetworkPolicy.disabled(allowed_hosts=("::1",))
+    assert policy.check_destination("[::1]")[0] is True
+
+
+def test_host_normalization_used_in_real_request_path(net: Net) -> None:
+    net.answers["xn--mnchen-3ya.de"] = [[PUBLIC_IP]]
+    result = bake(
+        "",
+        [{"op": "HTTP request", "args": ["GET", "http://München.de/"]}],
+        policy=ExecutionPolicy.permissive(),
+    )
+    assert result == "hello"
+    assert "xn--mnchen-3ya.de" in net.resolutions
+
+
+def test_unrestricted_max_redirects_none(two_servers: tuple[int, int, dict[str, Any]]) -> None:
+    port_a, _, _ = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted(max_redirects=None))
+    result = bake(
+        "",
+        [
+            {
+                "op": "HTTP request",
+                "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-same-origin"],
+            }
+        ],
+        policy=policy,
+    )
+    assert result == "hello"
+
+
+def test_max_redirects_zero_blocks(two_servers: tuple[int, int, dict[str, Any]]) -> None:
+    port_a, _, _ = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted(max_redirects=0))
+    with pytest.raises(OperationError):
+        bake(
+            "",
+            [
+                {
+                    "op": "HTTP request",
+                    "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-same-origin"],
+                }
+            ],
+            policy=policy,
+        )
+
+
+def test_max_redirects_numeric_enforces_limit(
+    two_servers: tuple[int, int, dict[str, Any]],
+) -> None:
+    port_a, _, _ = two_servers
+    policy = ExecutionPolicy.safe(network=NetworkPolicy.unrestricted(max_redirects=1))
+    with pytest.raises(OperationError) as exc_info:
+        bake(
+            "",
+            [
+                {
+                    "op": "HTTP request",
+                    "args": ["GET", f"http://127.0.0.1:{port_a}/redirect-loop-a"],
+                }
+            ],
+            policy=policy,
+        )
+    assert "redirect limit reached" in str(exc_info.value).lower()

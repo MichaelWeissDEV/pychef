@@ -59,7 +59,13 @@ from .errors import (
     RecipeError,
     UnknownOperationError,
 )
-from .execution import ExecutionContext, ExecutionPolicy, NetworkPolicy, normalize_host
+from .execution import (
+    ExecutionContext,
+    ExecutionPolicy,
+    NetworkPolicy,
+    PolicyDecision,
+    normalize_host,
+)
 from .packets import (
     json_safe,
     packet_json,
@@ -104,6 +110,7 @@ __all__ = [
     "OperationSpec",
     "Pipeline",
     "PipelineTrace",
+    "PolicyDecision",
     "PyChefError",
     "Recipe",
     "RecipeConfig",

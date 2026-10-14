@@ -41,7 +41,7 @@ def test_policy_rejects_invalid_limits(field: str, bad: object) -> None:
 @pytest.mark.parametrize("bad", [0, -1, "1", True])
 def test_policy_rejects_invalid_deadline(bad: object) -> None:
     with pytest.raises(ValueError):
-        ExecutionPolicy(cooperative_deadline_seconds=bad)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        ExecutionPolicy(cooperative_deadline_seconds=bad)  # type: ignore[arg-type]
 
 
 def test_policy_profiles() -> None:
@@ -550,3 +550,80 @@ def test_binary_delimiter(raw: str, expected: str) -> None:
 def test_fork_with_unicode_delimiters() -> None:
     recipe = [{"op": "Fork", "args": ["ä", "→", False]}, "To Upper case", MERGE]
     assert bake("aäbäc", recipe) == "A→B→C"
+
+
+def test_unrestricted_configuration_contract() -> None:
+    policy = ExecutionPolicy.safe().with_overrides(
+        max_memory_bytes=64 * 1024**3,
+        max_input_bytes=None,
+        max_output_bytes=None,
+        max_steps=None,
+        max_branches=None,
+        max_recursion_depth=None,
+        max_trace_bytes=None,
+        cooperative_deadline_seconds=None,
+        network=NetworkPolicy.unrestricted(
+            max_response_bytes=None,
+            timeout_seconds=None,
+            max_redirects=None,
+        ),
+    )
+    assert policy.max_memory_bytes == 64 * 1024**3
+    assert policy.max_input_bytes is None
+    assert policy.max_output_bytes is None
+    assert policy.max_steps is None
+    assert policy.max_branches is None
+    assert policy.max_recursion_depth is None
+    assert policy.max_trace_bytes is None
+    assert policy.cooperative_deadline_seconds is None
+    assert policy.network.mode == "unrestricted"
+    assert policy.network.max_response_bytes is None
+    assert policy.network.timeout_seconds is None
+    assert policy.network.max_redirects is None
+
+
+def test_policy_allow_network_none_combinations() -> None:
+    # Constructor combinations
+    p1 = ExecutionPolicy(allow_network=None, network=NetworkPolicy.disabled())
+    assert p1.allow_network is False
+
+    p2 = ExecutionPolicy(allow_network=None, network=NetworkPolicy.public_only())
+    assert p2.allow_network is True
+
+    p3 = ExecutionPolicy(allow_network=None, network=NetworkPolicy.unrestricted())
+    assert p3.allow_network is True
+
+    # with_overrides combinations
+    p4 = ExecutionPolicy.safe().with_overrides(allow_network=None)
+    assert p4.allow_network is False
+
+    p5 = ExecutionPolicy.permissive().with_overrides(allow_network=None)
+    assert p5.allow_network is True
+
+    p6 = ExecutionPolicy.safe().with_overrides(
+        allow_network=None, network=NetworkPolicy.unrestricted()
+    )
+    assert p6.allow_network is True
+
+    # Successive overrides from unrestricted to disabled and back
+    p7 = p6.with_overrides(network=NetworkPolicy.disabled())
+    assert p7.allow_network is False
+    p8 = p7.with_overrides(network=NetworkPolicy.unrestricted())
+    assert p8.allow_network is True
+
+
+def test_policy_zero_vs_none_semantics() -> None:
+    # 0 is a valid limit meaning 0 allowed
+    p_zero = ExecutionPolicy.safe().with_overrides(max_steps=0, max_input_bytes=0)
+    assert p_zero.max_steps == 0
+    assert p_zero.max_input_bytes == 0
+
+    # None disables the limit
+    p_none = p_zero.with_overrides(max_steps=None, max_input_bytes=None)
+    assert p_none.max_steps is None
+    assert p_none.max_input_bytes is None
+
+    # Positive integer sets limit
+    p_pos = p_none.with_overrides(max_steps=1, max_input_bytes=100)
+    assert p_pos.max_steps == 1
+    assert p_pos.max_input_bytes == 100

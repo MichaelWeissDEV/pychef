@@ -40,6 +40,18 @@ class OperationRegistry:
         )
         self._lock = RLock()
 
+    def __getstate__(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "_operations": dict(self._operations),
+                "_manifest": dict(self._manifest),
+            }
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self._operations = dict(state.get("_operations", {}))
+        self._manifest = dict(state.get("_manifest", {}))
+        self._lock = RLock()
+
     def register(self, operation: Operation) -> None:
         with self._lock:
             existing = self._operations.get(operation.name)

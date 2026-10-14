@@ -58,3 +58,27 @@ def test_spec_to_dict_serialization() -> None:
         assert "name" in arg
         assert "type" in arg
         assert "default" in arg
+
+
+def test_all_502_operation_specs_valid_and_json_serializable() -> None:
+    import json
+
+    specs = list_operation_specs()
+    assert len(specs) == 502
+    for s in specs:
+        assert s.name
+        assert isinstance(s.description, str)
+        assert s.module
+        assert s.category
+        assert s.input_type
+        assert s.output_type
+        assert isinstance(s.arguments, tuple)
+        assert isinstance(s.flow_control, bool)
+        assert isinstance(s.manual_bake, bool)
+        for arg in s.arguments:
+            assert isinstance(arg, OperationArgSpec)
+            assert isinstance(arg.name, str)
+            assert arg.type
+        d = s.to_dict()
+        serialized = json.dumps(d)
+        assert len(serialized) > 0

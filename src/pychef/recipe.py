@@ -158,10 +158,21 @@ class Recipe:
                     else False
                 )
                 if step.op == "Fork":
-                    split_delimiter = _binary_delimiter(str(step.args[0] if step.args else "\n"))
-                    merge_delimiter = _binary_delimiter(
-                        str(step.args[1] if len(step.args) > 1 else "\n")
-                    )
+                    raw_split = str(step.args[0] if step.args else "\n")
+                    raw_merge = str(step.args[1] if len(step.args) > 1 else "\n")
+                    if ctx.policy.max_input_bytes is not None:
+                        if (
+                            len(raw_split.encode("utf-8", "surrogatepass"))
+                            > ctx.policy.max_input_bytes
+                        ):
+                            ctx.check_input(raw_split, step.op, abs_index)
+                        if (
+                            len(raw_merge.encode("utf-8", "surrogatepass"))
+                            > ctx.policy.max_input_bytes
+                        ):
+                            ctx.check_input(raw_merge, step.op, abs_index)
+                    split_delimiter = _binary_delimiter(raw_split)
+                    merge_delimiter = _binary_delimiter(raw_merge)
                     outputs: list[str] = []
                     text = to_text(value)
                     accumulated_bytes = 0
@@ -189,6 +200,12 @@ class Recipe:
                     value = merge_delimiter.join(outputs)
                 else:
                     pattern = str(step.args[0] if step.args else "")
+                    if (
+                        ctx.policy.max_input_bytes is not None
+                        and len(pattern.encode("utf-8", "surrogatepass"))
+                        > ctx.policy.max_input_bytes
+                    ):
+                        ctx.check_input(pattern, step.op, abs_index)
                     flags = 0 if len(step.args) < 2 or step.args[1] else re.IGNORECASE
                     global_matching = bool(step.args[2] if len(step.args) > 2 else True)
                     source = to_text(value)
@@ -246,6 +263,8 @@ class Recipe:
             try:
                 value = implementation.run(value, step.args)
             except OperationError as exc:
+                exc.message = _sanitize_error_message(exc.message, step.args, before)
+                exc.args = (f"{exc.operation}: {exc.message}",)
                 if exc.step_index is None:
                     exc.step_index = abs_index
                     exc.branch_path = ctx.branch_path
@@ -253,7 +272,7 @@ class Recipe:
                 ctx.record(step.op, abs_index, before, None, started, exc)
                 raise
             except Exception as exc:
-                sanitized_msg = _sanitize_error_message(str(exc), step.args)
+                sanitized_msg = _sanitize_error_message(str(exc), step.args, before)
                 error = OperationError(
                     step.op,
                     sanitized_msg,
@@ -328,8 +347,8 @@ _SAFE_ERROR_WORDS = frozenset(
 )
 
 
-def _sanitize_error_message(message: str, args: Sequence[Any]) -> str:
-    """Sanitize exception messages to prevent leaking sensitive arguments (keys, passwords)."""
+def _sanitize_error_message(message: str, args: Sequence[Any] = (), value: Any = None) -> str:
+    """Sanitize exception messages to prevent leaking sensitive arguments and data."""
     sanitized = message
 
     def extract_secrets(obj: Any) -> list[str]:
@@ -356,9 +375,31 @@ def _sanitize_error_message(message: str, args: Sequence[Any]) -> str:
                 secrets.extend(extract_secrets(v))
         return secrets
 
-    for secret in extract_secrets(args):
+    all_secrets = extract_secrets(args)
+    if value is not None:
+        all_secrets.extend(extract_secrets(value))
+
+    for secret in all_secrets:
         if secret in sanitized:
             sanitized = sanitized.replace(secret, "[REDACTED]")
+
+    # Redact common credentials patterns
+    sanitized = re.sub(
+        r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/-]+=*",
+        r"\1 [REDACTED]",
+        sanitized,
+    )
+    sanitized = re.sub(
+        r"(?i)\b(session|token|auth|cookie2?)=([A-Za-z0-9._~+/-]+)",
+        r"\1=[REDACTED]",
+        sanitized,
+    )
+    sanitized = re.sub(
+        r"(?i)\b(api[_-]?key|password|secret|passphrase)\s*[:=]\s*[^\s,;]+",
+        r"\1: [REDACTED]",
+        sanitized,
+    )
+
     return sanitized
 
 
@@ -545,10 +586,16 @@ class Chef:
         if use_isolated:
             from .worker import IsolatedWorker
 
-            worker = IsolatedWorker(policy=eff_policy)
+            worker = IsolatedWorker(policy=eff_policy, operation_registry=self.registry)
             started = perf_counter()
             try:
-                return worker.run(value, recipe, return_type=return_type, trace=trace)
+                return worker.run(
+                    value,
+                    recipe,
+                    return_type=return_type,
+                    trace=trace,
+                    operation_registry=self.registry,
+                )
             except Exception as exc:
                 if raise_errors:
                     raise

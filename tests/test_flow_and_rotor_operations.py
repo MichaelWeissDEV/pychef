@@ -178,3 +178,75 @@ def test_colossus_statistics() -> None:
     assert result["characters"] == 3
     assert result["bitCounts"] == [2, 1, 2, 1, 2]
     assert len(result["deltaBitCounts"]) == 5
+
+
+def test_fork_recursion_depth_enforced() -> None:
+    from pychef import ExecutionLimitError, ExecutionPolicy
+
+    # Max recursion depth = 2. 3 nested forks should fail.
+    policy = ExecutionPolicy(max_recursion_depth=2)
+    recipe = [
+        {"op": "Fork", "args": [",", ","]},
+        {"op": "Fork", "args": [":", ":"]},
+        {"op": "Fork", "args": [";", ";"]},
+        {"op": "To Upper case"},
+        {"op": "Merge"},
+        {"op": "Merge"},
+        {"op": "Merge"},
+    ]
+    with pytest.raises(ExecutionLimitError) as exc_info:
+        Chef(policy=policy).bake("a:b,c:d", recipe)
+    assert exc_info.value.limit == "max_recursion_depth"
+
+
+def test_fork_branches_limit_enforced() -> None:
+    from pychef import ExecutionLimitError, ExecutionPolicy
+
+    policy = ExecutionPolicy(max_branches=3)
+    # 5 items to fork
+    recipe = [
+        {"op": "Fork", "args": [",", ","]},
+        {"op": "To Upper case"},
+        {"op": "Merge"},
+    ]
+    with pytest.raises(ExecutionLimitError) as exc_info:
+        Chef(policy=policy).bake("1,2,3,4,5", recipe)
+    assert exc_info.value.limit == "max_branches"
+
+
+def test_infinite_jump_loop_stopped_by_max_steps() -> None:
+    from pychef import ExecutionLimitError, ExecutionPolicy
+
+    policy = ExecutionPolicy(max_steps=20)
+    recipe = [
+        {"op": "Label", "args": ["loop"]},
+        {"op": "Jump", "args": ["loop", 1000]},
+    ]
+    with pytest.raises(ExecutionLimitError) as exc_info:
+        Chef(policy=policy).bake("test", recipe)
+    assert exc_info.value.limit == "max_steps"
+
+
+def test_fork_large_delimiter_checked_against_policy() -> None:
+    from pychef import ExecutionLimitError, ExecutionPolicy
+
+    policy = ExecutionPolicy(max_input_bytes=100)
+    huge_delim = "X" * 1000
+    recipe = [
+        {"op": "Fork", "args": [huge_delim, "\n"]},
+        {"op": "To Upper case"},
+        {"op": "Merge"},
+    ]
+    with pytest.raises(ExecutionLimitError) as exc_info:
+        Chef(policy=policy).bake("hello", recipe)
+    assert exc_info.value.limit == "max_input_bytes"
+
+
+def test_jump_nonexistent_label_handled_gracefully() -> None:
+    # Jumps to nonexistent label should not crash with KeyError
+    recipe = [
+        {"op": "Jump", "args": ["missing_label", 5]},
+        {"op": "To Upper case"},
+    ]
+    res = Chef().bake("hello", recipe)
+    assert res == "HELLO"

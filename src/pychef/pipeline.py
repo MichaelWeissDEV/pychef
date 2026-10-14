@@ -9,7 +9,7 @@ from typing import Any
 
 from .errors import OperationError, RecipeError
 from .execution import ExecutionContext, ExecutionPolicy, active_policy
-from .recipe import Recipe
+from .recipe import Recipe, _sanitize_error_message
 from .registry import OperationRegistry, registry
 from .types import RecipeStep
 
@@ -27,18 +27,45 @@ def _join_values(values: Sequence[Any], separator: str | bytes) -> str | bytes:
     return separator.join(values)
 
 
-def _measure_trace_size(val: Any) -> int:
+def _measure_trace_size(val: Any, seen: set[int] | None = None) -> int:
     if isinstance(val, bytes):
         return len(val)
     if isinstance(val, str):
         return len(val.encode("utf-8", "surrogatepass"))
+    if isinstance(val, (int, float, bool)) or val is None:
+        return 8
+    if seen is None:
+        seen = set()
+    obj_id = id(val)
+    if obj_id in seen:
+        return 0
+    seen.add(obj_id)
+
+    if isinstance(val, Mapping):
+        size = 64
+        for k, v in val.items():
+            size += _measure_trace_size(k, seen) + _measure_trace_size(v, seen)
+        return size
+    if isinstance(val, (list, tuple, set, frozenset)):
+        size = 64
+        for item in val:
+            size += _measure_trace_size(item, seen)
+        return size
     try:
         return len(val)
     except (TypeError, Exception):
-        return 0
+        return 64
 
 
 def _truncate_preview(val: Any, limit: int) -> tuple[Any, bool]:
+    if limit < 0:
+        raise ValueError("max_preview_bytes must be None or a non-negative integer")
+    if limit == 0:
+        if isinstance(val, str):
+            return "", bool(val)
+        if isinstance(val, bytes):
+            return b"", bool(val)
+        return val, False
     if isinstance(val, str):
         raw = val.encode("utf-8", "surrogatepass")
         if len(raw) > limit:
@@ -111,10 +138,13 @@ class Pipeline:
                 return value
             try:
                 return self._registry.get(step.op).run(value, step.args)
-            except OperationError:
+            except OperationError as exc:
+                exc.message = _sanitize_error_message(exc.message, step.args, value)
+                exc.args = (f"{exc.operation}: {exc.message}",)
                 raise
             except Exception as exc:
-                raise OperationError(step.op, str(exc)) from exc
+                sanitized_msg = _sanitize_error_message(str(exc), step.args, value)
+                raise OperationError(step.op, sanitized_msg) from exc
 
         return _Stage(step.op, run, step)
 
@@ -326,18 +356,9 @@ class Pipeline:
                 if isinstance(value, (str, bytes)):
                     context.check_output(value, stage.name, index)
 
-                # Track size of inputs/outputs for trace bounding
+                # Track logical size of inputs/outputs
                 in_size = _measure_trace_size(stage_input)
                 out_size = _measure_trace_size(value)
-
-                accumulated_trace_bytes += in_size + out_size + 64
-                if limit_trace_bytes is not None and accumulated_trace_bytes > limit_trace_bytes:
-                    raise context._limit(
-                        "max_trace_bytes",
-                        f"trace buffer exceeded {limit_trace_bytes} bytes",
-                        stage.name,
-                        index,
-                    )
 
                 saved_in = stage_input
                 saved_out = value
@@ -346,6 +367,18 @@ class Pipeline:
                     saved_in, in_trunc = _truncate_preview(stage_input, max_preview_bytes)
                     saved_out, out_trunc = _truncate_preview(value, max_preview_bytes)
                     truncated = in_trunc or out_trunc
+
+                # Trace buffer budget counts actually stored preview data
+                stored_in_size = _measure_trace_size(saved_in)
+                stored_out_size = _measure_trace_size(saved_out)
+                accumulated_trace_bytes += stored_in_size + stored_out_size + 64
+                if limit_trace_bytes is not None and accumulated_trace_bytes > limit_trace_bytes:
+                    raise context._limit(
+                        "max_trace_bytes",
+                        f"trace buffer exceeded {limit_trace_bytes} bytes",
+                        stage.name,
+                        index,
+                    )
 
                 trace.append(
                     PipelineTrace(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from pychef import (
@@ -98,8 +100,6 @@ def test_isolated_worker_trace_returned() -> None:
 
 
 def test_isolated_worker_unpicklable_exception_handled(monkeypatch: pytest.MonkeyPatch) -> None:
-    from typing import Any
-
     from pychef.worker import _worker_entry
 
     class DummyConn:
@@ -150,3 +150,124 @@ def test_chef_bake_result_isolated_raise_errors_false() -> None:
     assert result.error is not None
     assert isinstance(result.error, ExecutionLimitError)
     assert result.error.limit == "max_memory_bytes"
+
+
+def _custom_double(val: Any, args: Any) -> Any:
+    return val * 2
+
+
+def test_isolated_worker_concurrency_lock() -> None:
+    import threading
+
+    worker = IsolatedWorker()
+    errors: list[Exception] = []
+
+    # Acquire internal lock to simulate active job
+    worker._lock.acquire()
+    try:
+
+        def try_run() -> None:
+            try:
+                worker.run("abc", ["To Base64"])
+            except Exception as e:
+                errors.append(e)
+
+        t = threading.Thread(target=try_run)
+        t.start()
+        t.join(timeout=1.0)
+
+        assert len(errors) == 1
+        assert isinstance(errors[0], RuntimeError)
+        assert "concurrent execution" in str(errors[0])
+    finally:
+        worker._lock.release()
+
+
+def test_isolated_worker_cleanup_on_start_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import multiprocessing.process
+
+    worker = IsolatedWorker()
+
+    def fail_start(self: Any) -> None:
+        raise OSError("Process creation failed")
+
+    monkeypatch.setattr(multiprocessing.process.BaseProcess, "start", fail_start)
+
+    with pytest.raises(OSError, match="Process creation failed"):
+        worker.run("abc", ["To Base64"])
+
+    assert worker._current_process is None
+    assert not worker._lock.locked()
+
+
+def test_isolated_worker_unexpected_eof_distinction(monkeypatch: pytest.MonkeyPatch) -> None:
+    import multiprocessing as mp
+
+    from pychef.errors import PyChefError
+
+    worker = IsolatedWorker()
+    monkeypatch.setattr(
+        IsolatedWorker,
+        "is_hard_memory_limit_supported",
+        classmethod(lambda cls: True),
+    )
+
+    class FakeConnEOF:
+        def poll(self, timeout: float | None = None) -> bool:
+            return True
+
+        def recv(self) -> Any:
+            raise EOFError()
+
+        def close(self) -> None:
+            pass
+
+    class FakeProcess:
+        exitcode = -9
+
+        def start(self) -> None:
+            pass
+
+        def is_alive(self) -> bool:
+            return False
+
+        def join(self, timeout: float | None = None) -> None:
+            pass
+
+    ctx = mp.get_context("spawn")
+    monkeypatch.setattr(ctx, "Pipe", lambda duplex=False: (FakeConnEOF(), FakeConnEOF()))
+    monkeypatch.setattr(ctx, "Process", lambda target, args: FakeProcess())
+    monkeypatch.setattr(mp, "get_context", lambda method: ctx)
+
+    # 1. With hard limit and exitcode -9 -> ExecutionLimitError("max_memory_bytes")
+    with pytest.raises(ExecutionLimitError) as exc_info:
+        worker.run("abc", ["To Base64"], hard_memory_limit_bytes=1024 * 1024)
+    assert exc_info.value.limit == "max_memory_bytes"
+
+    # 2. Without hard limit and exitcode -9 -> PyChefError
+    with pytest.raises(PyChefError) as exc_info2:
+        worker.run("abc", ["To Base64"], hard_memory_limit_bytes=None)
+    assert not isinstance(exc_info2.value, ExecutionLimitError)
+    assert "Worker process terminated unexpectedly" in str(exc_info2.value)
+
+    # 3. With exitcode 1 -> PyChefError even if hard limit set
+    FakeProcess.exitcode = 1
+    with pytest.raises(PyChefError) as exc_info3:
+        worker.run("abc", ["To Base64"], hard_memory_limit_bytes=1024 * 1024)
+    assert not isinstance(exc_info3.value, ExecutionLimitError)
+    assert "Worker process terminated unexpectedly with exit code 1" in str(exc_info3.value)
+
+
+def test_isolated_worker_custom_registry() -> None:
+    from pychef.registry import Operation, OperationRegistry
+
+    custom_registry = OperationRegistry()
+    custom_registry.register(Operation("Custom Double", _custom_double, category="test"))
+
+    worker = IsolatedWorker(operation_registry=custom_registry)
+    res = worker.run("Echo", ["Custom Double"])
+    assert res.result == "EchoEcho"
+
+    # Also test bake_isolated with custom registry
+    res2 = bake_isolated("Hello", ["Custom Double"], operation_registry=custom_registry)
+    assert res2 == "HelloHello"
