@@ -1,16 +1,30 @@
 Getting started
 ===============
 
+PyChef is an unofficial, pure-Python library for CyberChef-style data
+transformations. This page takes you from installation to a first transformation
+with each of its four entry points.
+
 Requirements
 ------------
 
-PyChef requires Python 3.10 or newer. The wheel contains the Python
-implementation and has no mandatory runtime dependencies.
+Python 3.10 or newer on Linux, macOS, or Windows. There are no runtime
+dependencies.
 
-Install from PyPI
------------------
+Install
+-------
 
-The distribution and import names are intentionally different:
+The distribution and the import name are intentionally different:
+
+.. list-table::
+   :header-rows: 1
+
+   * - What
+     - Name
+   * - Install (PyPI distribution)
+     - ``cyberchef-py``
+   * - Import (Python package)
+     - ``pychef``
 
 .. code-block:: console
 
@@ -22,68 +36,94 @@ or with uv:
 
    $ uv add cyberchef-py
 
-Import ``pychef``, not ``cyberchef_py``:
+.. doctest::
 
-.. code-block:: python
+   >>> import pychef
+   >>> isinstance(pychef.__version__, str)
+   True
+   >>> len(pychef.list_operations())
+   502
 
-   import pychef
+First transformation
+--------------------
 
-   print(pychef.__version__)
-   print(len(pychef.list_operations()))
+The same transformation, four ways. All of them run the same engine and apply the
+same default safety limits (see :doc:`errors-and-safety`).
 
-Your first recipe
+**1. A direct operation** (:doc:`direct-operations`) is the shortest path for a
+single step:
+
+.. doctest::
+
+   >>> from pychef.ops import from_hex, to_base64
+   >>> to_base64(from_hex("414243"))
+   'QUJD'
+
+**2. A recipe** is a list of CyberChef-compatible steps (:doc:`recipes`):
+
+.. doctest::
+
+   >>> from pychef import bake
+   >>> bake("414243", ["From Hex", "To Base64"])
+   'QUJD'
+
+**3. A pipeline** is a reusable, immutable chain with readable methods
+(:doc:`pipelines`):
+
+.. doctest::
+
+   >>> from pychef import Pipeline
+   >>> decode = Pipeline().from_hex().xor(b"\x42").decode()
+   >>> decode("0a272e2e2d")
+   'Hello'
+
+**4. A configured engine** applies one policy to many executions
+(:doc:`errors-and-safety`):
+
+.. doctest::
+
+   >>> from pychef import Chef, ExecutionPolicy
+   >>> chef = Chef(policy=ExecutionPolicy.safe())
+   >>> chef.bake("414243", ["From Hex"])
+   b'ABC'
+
+:doc:`choosing-an-api` explains which one to use when.
+
+Text and bytes
+--------------
+
+Operations accept ``str`` or ``bytes``. Decoders return ``bytes`` (decoded data
+is binary until you say it is text); encoders return ``str``. A ``str`` input is
+UTF-8 encoded. Use ``bytes`` when the data is binary and ``str`` when it is
+text; convert explicitly with ``.decode()`` or ``Pipeline.decode()``. The rules are
+in :doc:`data-model`.
+
+Errors and limits
 -----------------
 
-``bake`` applies each operation in order. Operation names are case-sensitive and
-match their entries in the :doc:`operations/index`.
+Every library error derives from ``PyChefError``. Resource and permission limits
+come from an ``ExecutionPolicy``; network access is off unless you grant it:
 
-.. code-block:: python
+.. doctest::
 
-   from pychef import bake
+   >>> from pychef import ExecutionLimitError, ExecutionPolicy, bake
+   >>> try:
+   ...     bake("41" * 10, ["From Hex"], policy=ExecutionPolicy(max_input_bytes=4))
+   ... except ExecutionLimitError as error:
+   ...     print(error.limit)
+   max_input_bytes
 
-   result = bake(
-       "Hello, World!",
-       [
-           {"op": "To Base64", "args": ["A-Za-z0-9+/="]},
-           {"op": "Reverse", "args": ["Character"]},
-       ],
-   )
+Find more operations
+--------------------
 
-   assert result == b"==QIkxmcvdFIs8GbsVGS"
+.. doctest::
 
-The first operation returns bytes and the second keeps that binary output. This
-is expected. See :doc:`data-model` for explicit final conversion.
+   >>> from pychef import get_operation_spec, list_operations
+   >>> "Gunzip" in list_operations()
+   True
+   >>> [argument.name for argument in get_operation_spec("To Hex").arguments]
+   ['Delimiter', 'Bytes per line']
 
-Your first pipeline
--------------------
-
-A pipeline is useful when the same transformation is applied repeatedly:
-
-.. code-block:: python
-
-   from pychef import Pipeline
-
-   decode = Pipeline().from_hex().xor(b"\x42").decode()
-
-   assert decode("0a272e2e2d") == "Hello"
-   assert decode("152d302e26") == "World"
-
-Pipelines are immutable. Calling ``then``, ``xor``, or another chaining method
-returns a new pipeline and leaves the old instance unchanged.
-
-Discover operations
--------------------
-
-.. code-block:: python
-
-   from pychef import list_operations, registry
-
-   for name in list_operations():
-       print(name)
-
-   to_hex = registry.get("To Hex")
-   print(to_hex.category)
-   print(to_hex.run(b"ABC", ("None", 0)))
-
-For each name, its reference page documents positional argument order, defaults,
-known boundaries, a recipe call, a pipeline call, and the dedicated Python module.
+Each name has a reference page in :doc:`operations/index` with its positional
+arguments, defaults, and known limitations. ``pychef.ops.run_operation`` runs any
+of them directly.

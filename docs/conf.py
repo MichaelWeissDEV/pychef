@@ -20,6 +20,7 @@ release = pychef.__version__
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx.ext.doctest",
     "sphinx.ext.napoleon",
     "sphinx_copybutton",
 ]

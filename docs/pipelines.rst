@@ -139,3 +139,53 @@ type-checker friendly. For example:
 
 Use a named helper when it exists; use ``then`` for any of the 502 registered
 operations. The individual operation pages show the correct positional order.
+
+Execution budgets, branches, and trusted callables
+--------------------------------------------------
+
+One call, one context
+~~~~~~~~~~~~~~~~~~~~~
+
+A single ``pipeline(value, policy=...)`` call creates exactly one execution
+context. Steps, branches, output limits, the deadline, and the network policy are
+accounted for the **whole call, including every branch created with** ``concat``
+(and nested ``concat`` branches). A branch can never reset a budget or fall back to
+the safe defaults, and an explicitly ``unrestricted`` policy stays unrestricted
+inside branches. Branch steps appear in traces with their ``branch_path``.
+
+.. code-block:: python
+
+   pipeline = Pipeline().concat(Pipeline().from_hex(), Pipeline().from_hex())
+   pipeline("4142", policy=ExecutionPolicy(max_steps=3))   # concat + 2 branch steps: OK
+   pipeline("4142", policy=ExecutionPolicy(max_steps=2))   # raises ExecutionLimitError
+
+Batches and streams
+~~~~~~~~~~~~~~~~~~~
+
+``transform_many(values)`` consumes a finite iterable and returns a **tuple**
+(materialized, order preserved). ``iter_transform(values)`` is a generator: it
+pulls one item at a time and yields each result immediately, so large inputs do not
+have to fit in memory. Both share one execution context across all items, which
+means **one step budget and one deadline for the entire batch or stream**. Under the
+default ``ExecutionPolicy.safe()`` a stream therefore ends with
+``ExecutionLimitError`` after 10,000 total steps, or with ``ExecutionTimeoutError``
+30 seconds after the first item is requested; that wall-clock time includes the time
+your code spends between ``next()`` calls. For long-running or effectively unbounded
+streams pass an explicit policy, for example
+``ExecutionPolicy(max_steps=None, cooperative_deadline_seconds=None)``. An exception in one item propagates and ends the iteration;
+call ``pipeline(item)`` per item (each call has its own context) for independent
+budgets or per-item error handling.
+
+Trusted callables only
+~~~~~~~~~~~~~~~~~~~~~~
+
+``apply`` runs arbitrary Python code that you supply. It is a feature for
+trusted code, **not a sandbox**: PyChef cannot constrain what a callable does,
+resource checks inside it are not guaranteed (limits are enforced between stages),
+and it has the permissions of your process. Never build a pipeline from callables
+supplied by untrusted parties. For untrusted *recipes* (data), use
+``ExecutionPolicy.untrusted()`` and :class:`pychef.IsolatedWorker`; see
+:doc:`errors-and-safety`.
+
+Pipeline helpers inherit nothing from your callable: a ``pychef.ops`` function
+called inside an ``apply`` stage uses the policy of the running pipeline.

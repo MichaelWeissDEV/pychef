@@ -21,40 +21,91 @@ name is still available immediately before the first release.
 
 ## Prepare a release
 
-1. Ensure the worktree is clean and the full CI workflow passes.
-2. Update `CHANGELOG.md` and choose the version:
+Nothing below publishes anything until step 9. Steps 1-8 only touch the local
+checkout.
+
+1. **Choose the version.** Compare the changes with the last *published* version
+   on PyPI (not with internal commit messages) and apply Semantic Versioning:
+   new backwards-compatible API -> minor, fixes only -> patch, breaking -> major
+   (while `0.x`, breaking changes also bump the minor version). Never reuse a
+   version that already exists on PyPI or TestPyPI.
 
    ```console
-   uv version 0.1.0
+   uv version X.Y.Z        # updates pyproject.toml and uv.lock
+   uv lock --check
    ```
 
-3. Validate locally:
+2. **Prepare the changelog.** Move the `[Unreleased]` entries of `CHANGELOG.md`
+   under `## [X.Y.Z] - YYYY-MM-DD` and keep an empty `[Unreleased]` section.
+3. **Run the checks** (same commands as CI):
 
    ```console
    uv sync --locked --dev
-   uv run ruff format --check .
-   uv run ruff check .
-   uv run ty check
    uv run pytest
+   uv run ruff check . && uv run ruff format --check .
+   uv run ty check
+   uv run validate-pyproject pyproject.toml
+   ```
+
+4. **Build and validate metadata:**
+
+   ```console
    uv build --no-sources --clear
    uv run twine check --strict dist/*
    uv run check-wheel-contents dist/*.whl
-   uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
-   uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
    ```
 
-4. Commit the version and changelog.
-5. Run the `Publish to TestPyPI` workflow manually and test installation from
-   TestPyPI.
-6. Create an annotated tag matching the package version and push it:
+5. **Install the wheel in isolation** and run the smoke and typing checks (the
+   repository must not be importable, so run from a different directory):
 
    ```console
-   git tag -a v0.1.0 -m "PyChef 0.1.0"
-   git push origin v0.1.0
+   uv run --isolated --no-project --with dist/*.whl python tests/smoke_test.py
+   uv run python tests/check_wheel_typing.py dist/*.whl
    ```
 
-7. Create a GitHub release from that tag. Publishing the release triggers the
-   `Publish to PyPI` workflow after its environment approval.
+6. **Install the source distribution in isolation:**
+
+   ```console
+   uv run --isolated --no-project --with dist/*.tar.gz python tests/smoke_test.py
+   ```
+
+7. **Build the documentation and examples:**
+
+   ```console
+   uv sync --locked --group docs
+   uv run python docs/_scripts/generate_operation_docs.py --check
+   uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+   uv run python examples/quickstart.py
+   ```
+
+8. **Release candidate review.** Commit the version and changelog on a branch,
+   open a pull request, and let the full CI matrix (Linux, macOS, Windows) pass.
+   Confirm that the documentation builds for the new version.
+9. **Only after explicit approval:** run the `Publish to TestPyPI` workflow
+   manually and test installation from TestPyPI in a clean environment:
+
+   ```console
+   python -m pip install --index-url https://test.pypi.org/simple/ \
+     --extra-index-url https://pypi.org/simple/ cyberchef-py==X.Y.Z
+   python -c "import pychef; print(pychef.__version__)"
+   ```
+
+10. Create an annotated tag matching the package version and push it, then create
+    a GitHub release from that tag. The `Publish to PyPI` workflow checks that
+    the tag equals `v<package version>` and that the built artifact names carry
+    that version, then publishes after its environment approval.
+
+    ```console
+    git tag -a vX.Y.Z -m "PyChef X.Y.Z"
+    git push origin vX.Y.Z
+    ```
 
 PyPI does not permit replacing files for an existing version. If a release is
 incorrect, increment the version and publish a new release.
+
+## Documentation versions
+
+Read the Docs builds `latest` from the default branch (development state) and
+`stable` from the newest release tag. Activate new tags in the Read the Docs
+project's version list. Do not link `latest` pages from release notes of older
+versions; use versioned URLs such as `/en/vX.Y.Z/`.

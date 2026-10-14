@@ -61,3 +61,18 @@ Inspect status from Python
 The repository also keeps the exhaustive name matrix in ``COMPATIBILITY.md``.
 When updating the pinned upstream release, regenerate metadata, port or add
 vectors, and update the compatibility notes in the same change.
+
+Differences from CyberChef
+--------------------------
+
+* PyChef is a Python library. It has no graphical interface, no web server, and
+  no JavaScript runtime.
+* Safe default limits apply to every execution (:doc:`errors-and-safety`);
+  CyberChef itself has no such limits. Use ``ExecutionPolicy.unrestricted()`` to
+  lift them.
+* Network operations are off unless a policy grants them.
+* ``str`` and ``bytes`` are distinct; CyberChef's ``ArrayBuffer`` and string
+  types map to ``bytes`` and ``str`` as described in :doc:`data-model`.
+* The ``pychef.ops`` helpers use Python-friendly defaults in one place: ``to_hex``
+  defaults to no delimiter (the recipe default is ``"Space"``), matching
+  ``Pipeline.to_hex``.

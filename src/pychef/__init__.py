@@ -198,8 +198,12 @@ def list_operations() -> tuple[str, ...]:
 
 
 def __getattr__(name: str) -> object:
-    if name == "operations":
-        from . import operations
+    if name in {"operations", "ops"}:
+        from importlib import import_module
 
-        return operations
+        return import_module(f"{__name__}.{name}")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), "ops", "operations"})

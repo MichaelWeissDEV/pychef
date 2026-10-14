@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/project/py-chef/
+      url: https://test.pypi.org/project/cyberchef-py/
     permissions:
       contents: read
       id-token: write
@@ -31,6 +31,14 @@ jobs:
           version: "0.11.32"
           python-version: "3.13"
           enable-cache: true
+      - name: Fail if this version already exists on the index
+        run: |
+          version="$(uv version --short)"
+          status="$(curl -s -o /dev/null -w '%{http_code}' "https://test.pypi.org/pypi/cyberchef-py/${version}/json")"
+          if [ "$status" = "200" ]; then
+            echo "cyberchef-py ${version} already exists on test.pypi.org; bump the version." >&2
+            exit 1
+          fi
       - name: Install project
         run: uv sync --locked --dev
       - name: Run release tests
@@ -43,5 +51,12 @@ jobs:
           uv run check-wheel-contents dist/*.whl
           uv run --isolated --no-project --with dist/*.whl python tests/smoke_test.py
           uv run --isolated --no-project --with dist/*.tar.gz python tests/smoke_test.py
+          uv run python tests/check_wheel_typing.py dist/*.whl
+      - name: Verify artifact versions match the package version
+        run: |
+          version="$(uv version --short)"
+          test -f "dist/cyberchef_py-${version}-py3-none-any.whl"
+          test -f "dist/cyberchef_py-${version}.tar.gz"
+          test "$(ls dist | wc -l)" -eq 2
       - name: Publish with Trusted Publishing
         run: uv publish --index testpypi --trusted-publishing always

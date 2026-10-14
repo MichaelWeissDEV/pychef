@@ -7,10 +7,28 @@ import hashlib
 from collections.abc import Iterable, Sequence
 from typing import Any, Literal
 
-from .operations.aes import _block_mode, _gcm, _require_key
 from .types import Data, to_bytes
 
 BytesLike = bytes | bytearray | memoryview
+
+
+# The AES implementation is imported on first use so ``import pychef`` stays light.
+def _require_key(key: bytes) -> None:
+    from .operations.aes import _require_key as implementation
+
+    implementation(key)
+
+
+def _gcm(*args: Any, **kwargs: Any) -> Any:
+    from .operations.aes import _gcm as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def _block_mode(*args: Any, **kwargs: Any) -> Any:
+    from .operations.aes import _block_mode as implementation
+
+    return implementation(*args, **kwargs)
 
 
 def decode_bytes(value: str | BytesLike, *, format: str = "raw") -> bytes:
@@ -309,18 +327,22 @@ def digests(
 
 
 def md5(value: Data | BytesLike) -> str:
+    """Return the MD5 digest as lowercase hexadecimal text (same as ``pychef.ops.md5``)."""
     return str(digest(value, algorithm="md5"))
 
 
 def sha1(value: Data | BytesLike) -> str:
+    """Return the SHA-1 digest as lowercase hexadecimal text (same as ``pychef.ops.sha1``)."""
     return str(digest(value, algorithm="sha1"))
 
 
 def sha256(value: Data | BytesLike) -> str:
+    """Return the SHA-256 digest as lowercase hexadecimal text (same as ``pychef.ops.sha256``)."""
     return str(digest(value, algorithm="sha256"))
 
 
 def sha512(value: Data | BytesLike) -> str:
+    """Return the SHA-512 digest as lowercase hexadecimal text (same as ``pychef.ops.sha512``)."""
     return str(digest(value, algorithm="sha512"))
 
 

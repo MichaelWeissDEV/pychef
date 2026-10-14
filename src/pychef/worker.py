@@ -6,6 +6,7 @@ import multiprocessing as mp
 import pickle
 import sys
 import threading
+from collections.abc import Callable
 from contextlib import suppress
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -89,6 +90,63 @@ def _worker_entry(
     finally:
         with suppress(OSError):
             conn.close()
+
+
+def _recv_before_deadline(
+    conn: Any, timeout: float, on_timeout: Callable[[], None] | None = None
+) -> Any:
+    """Receive one complete message or raise :class:`TimeoutError`.
+
+    ``Connection.poll()`` only reports that *some* bytes are readable; a
+    following ``recv()`` blocks until the entire message has arrived, so a child
+    that stalls mid-message would defeat the deadline. The blocking read runs in
+    a helper thread. At the deadline *on_timeout* (which must stop the child) is
+    called and the thread is joined before :class:`TimeoutError` is raised, so
+    the caller never closes a descriptor that a reader thread still uses.
+    """
+    outcome: dict[str, Any] = {}
+
+    def read() -> None:
+        try:
+            outcome["payload"] = conn.recv()
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    reader = threading.Thread(target=read, name="pychef-worker-recv", daemon=True)
+    reader.start()
+    reader.join(timeout)
+    if reader.is_alive():
+        if on_timeout is not None:
+            on_timeout()
+        reader.join(5.0)
+        raise TimeoutError
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["payload"]
+
+
+def _receive_payload(
+    conn: Any, timeout: float | None, on_timeout: Callable[[], None] | None
+) -> dict[str, Any]:
+    """Receive and validate the child's result message.
+
+    Pipe failures surface as :class:`EOFError` (handled by the caller as an
+    unexpected child exit); undecodable or malformed messages become a
+    :class:`PyChefError` instead of leaking pickle internals.
+    """
+    try:
+        payload = (
+            conn.recv() if timeout is None else _recv_before_deadline(conn, timeout, on_timeout)
+        )
+    except (EOFError, TimeoutError):
+        raise
+    except OSError as exc:
+        raise EOFError(str(exc)) from exc
+    except Exception:
+        raise PyChefError("Isolated worker returned an unreadable result message") from None
+    if not isinstance(payload, dict) or "success" not in payload:
+        raise PyChefError("Isolated worker returned a malformed result message")
+    return payload
 
 
 class IsolatedWorker:
@@ -257,17 +315,18 @@ class IsolatedWorker:
 
         try:
             if timeout is not None:
-                elapsed = perf_counter() - started
-                remaining = max(0.0, timeout - elapsed)
-                if parent_conn.poll(remaining):
-                    payload = parent_conn.recv()
-                else:
+                remaining = max(0.0, timeout - (perf_counter() - started))
+                try:
+                    payload = _receive_payload(
+                        parent_conn, remaining, lambda: self._terminate_process(process)
+                    )
+                except TimeoutError:
                     self._terminate_process(process)
                     raise ExecutionTimeoutError(
                         f"Isolated worker exceeded deadline of {timeout}s",
-                    )
+                    ) from None
             else:
-                payload = parent_conn.recv()
+                payload = _receive_payload(parent_conn, None, None)
 
             join_timeout = (
                 max(0.1, min(2.0, timeout - (perf_counter() - started)))

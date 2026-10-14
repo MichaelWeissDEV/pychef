@@ -9,8 +9,11 @@ task-oriented explanations, start with :doc:`../recipes`, :doc:`../pipelines`,
    :maxdepth: 2
 
    package
+   ops
    recipe
    pipeline
+   execution
+   worker
    ctf
    packets
    registry

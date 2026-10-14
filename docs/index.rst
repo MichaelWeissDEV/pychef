@@ -2,53 +2,64 @@ PyChef documentation
 ====================
 
 PyChef is an unofficial, pure-Python data-transformation library inspired by
-CyberChef. It runs recipes and reusable pipelines inside normal Python scripts,
-tests, services, notebooks, and CTF tooling. The published package has no runtime
-dependency on Node.js or JavaScript.
+CyberChef. Use it as a normal Python library: call single operations as
+functions, run CyberChef recipes, or build reusable pipelines. It has no runtime
+dependencies and needs no Node.js.
 
-The PyPI distribution is named ``cyberchef-py``. The import is named ``pychef``.
-PyChef currently registers 502 operation names from the pinned CyberChef 11.3.0
-inventory. Name coverage and exact option-level compatibility are deliberately
-reported separately; read :doc:`compatibility` before relying on an uncommon
-format or protocol variant.
+The PyPI distribution is ``cyberchef-py``; the import is ``pychef``.
+PyChef registers 502 operation names from the pinned CyberChef 11.3.0 inventory.
+Name coverage and exact option-level compatibility are reported separately; read
+:doc:`compatibility` before relying on an uncommon format or protocol variant.
 
-Start here
-----------
+.. code-block:: python
 
-* :doc:`getting-started` installs the package and performs a first transformation.
-* :doc:`data-model` explains when PyChef uses ``str`` and when it uses ``bytes``.
-* :doc:`recipes` explains CyberChef-compatible recipe dictionaries.
-* :doc:`pipelines` explains immutable, composable Python transformations.
-* :doc:`operations/index` lists every operation, its arguments, status, and examples.
-* :doc:`ctf-tools` covers packing, endianness, XOR, hashes, cyclic patterns, and AES.
-* :doc:`packets` turns network packets, PCAP, and PCAPNG into Python dictionaries.
+   from pychef import Pipeline, bake
+   from pychef.ops import from_hex, to_base64
+
+   to_base64(from_hex("414243"))                     # direct operations
+   bake("414243", ["From Hex", "To Base64"])         # recipes
+   Pipeline().from_hex().to_base64()("414243")       # pipelines
 
 .. toctree::
    :maxdepth: 2
-   :caption: Learn
+   :caption: Getting started
 
    getting-started
+   choosing-an-api
    data-model
+
+.. toctree::
+   :maxdepth: 2
+   :caption: User guide
+
+   direct-operations
    recipes
    pipelines
+   errors-and-safety
    examples
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Cookbook
+
+   cookbook
    ctf-tools
    packets
-   errors-and-safety
 
 .. toctree::
    :maxdepth: 3
    :caption: Reference
 
-   operations/index
    api/index
+   operations/index
    compatibility
    attribution
 
 .. toctree::
    :maxdepth: 2
-   :caption: Project
+   :caption: Development
 
+   development
    contributing
    faq
 

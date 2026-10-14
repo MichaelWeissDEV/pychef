@@ -16,17 +16,27 @@ concurrency:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os:
+          - ubuntu-latest
         python-version:
           - "3.10"
           - "3.11"
           - "3.12"
           - "3.13"
           - "3.14"
+        include:
+          # Current stable Python on the other platforms. Worker isolation uses the
+          # "spawn" start method everywhere; hard memory limits are Linux-only and
+          # their tests skip elsewhere.
+          - os: macos-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.13"
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -81,6 +91,8 @@ jobs:
         run: uv run --isolated --no-project --with dist/*.whl python tests/smoke_test.py
       - name: Smoke test source distribution
         run: uv run --isolated --no-project --with dist/*.tar.gz python tests/smoke_test.py
+      - name: Type-check the installed wheel
+        run: uv run python tests/check_wheel_typing.py dist/*.whl
 
   documentation:
     name: Sphinx documentation

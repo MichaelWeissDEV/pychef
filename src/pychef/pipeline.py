@@ -95,9 +95,50 @@ class _Stage:
     name: str
     transform: Transform
     recipe_step: RecipeStep | None = None
+    # Stages that run nested pipelines (branches) receive the running
+    # ExecutionContext and their own stage index, so budgets, deadlines, and the
+    # network policy of the outer execution apply to the whole tree.
+    contextual: Callable[[Any, ExecutionContext, int], Any] | None = None
 
-    def run(self, value: Any) -> Any:
+    def run(self, value: Any, context: ExecutionContext, index: int) -> Any:
+        if self.contextual is not None:
+            return self.contextual(value, context, index)
         return self.transform(value)
+
+
+class _TraceCollector:
+    """Accumulate :class:`PipelineTrace` entries within ``max_trace_bytes``."""
+
+    def __init__(self, max_preview_bytes: int | None, limit: int | None) -> None:
+        self.max_preview_bytes = max_preview_bytes
+        self.limit = limit
+        self.used = 0
+        self.entries: list[PipelineTrace] = []
+
+    def add(
+        self, name: str, before: Any, after: Any, context: ExecutionContext, index: int
+    ) -> None:
+        saved_in, saved_out, truncated = before, after, False
+        if self.max_preview_bytes is not None:
+            saved_in, in_trunc = _truncate_preview(before, self.max_preview_bytes)
+            saved_out, out_trunc = _truncate_preview(after, self.max_preview_bytes)
+            truncated = in_trunc or out_trunc
+        # The budget counts the preview data that is actually stored.
+        self.used += _measure_trace_size(saved_in) + _measure_trace_size(saved_out) + 64
+        if self.limit is not None and self.used > self.limit:
+            raise context._limit(
+                "max_trace_bytes", f"trace buffer exceeded {self.limit} bytes", name, index
+            )
+        self.entries.append(
+            PipelineTrace(
+                name=name,
+                input=saved_in,
+                output=saved_out,
+                input_size=_measure_trace_size(before),
+                output_size=_measure_trace_size(after),
+                truncated=truncated,
+            )
+        )
 
 
 class Pipeline:
@@ -193,11 +234,19 @@ class Pipeline:
             for branch in branches
         )
 
-        def concatenate(value: Any) -> str | bytes:
-            return _join_values(tuple(branch.transform(value) for branch in normalized), separator)
+        def concatenate(value: Any, context: ExecutionContext, index: int) -> str | bytes:
+            outputs = []
+            for branch in normalized:
+                context.charge_branch("concat", index)
+                with context.nested("concat", index):
+                    outputs.append(branch._run(value, context))
+            return _join_values(outputs, separator)
+
+        def standalone(value: Any) -> str | bytes:  # pragma: no cover - always contextual
+            raise AssertionError("concat stages run through the pipeline engine")
 
         names = ", ".join(" -> ".join(branch.steps) or "identity" for branch in normalized)
-        return self._new(_Stage(f"concat({names})", concatenate))
+        return self._new(_Stage(f"concat({names})", standalone, contextual=concatenate))
 
     def append(self, suffix: str | bytes) -> Pipeline:
         """Append a constant to each transformed output without coercing types."""
@@ -236,7 +285,12 @@ class Pipeline:
         policy: ExecutionPolicy | None = None,
         context: ExecutionContext | None = None,
     ) -> Any:
-        """Transform one value through every configured stage."""
+        """Transform one value through every configured stage.
+
+        Branches created with :meth:`concat` share this call's single
+        :class:`ExecutionContext`: step, branch, and output budgets, the
+        deadline, and the network policy are never reset inside a branch.
+        """
         if context is None:
             context = ExecutionContext(policy=policy or ExecutionPolicy.safe())
         elif policy is not None and policy is not context.policy:
@@ -245,31 +299,39 @@ class Pipeline:
         with active_policy(context.policy):
             if isinstance(value, (str, bytes)):
                 context.check_input(value)
-            for index, stage in enumerate(self._stages):
-                context.charge_step(stage.name, index)
-                if stage.recipe_step is not None:
-                    context.require_operation(stage.recipe_step.op, index)
-                started = perf_counter()
-                before = value
-                try:
-                    value = stage.run(value)
-                except OperationError as exc:
-                    if exc.step_index is None:
-                        exc.step_index = index
-                        exc.branch_path = context.branch_path
-                        exc.execution_id = context.execution_id
-                    if isinstance(before, (str, bytes)):
-                        context.record(stage.name, index, before, None, started, exc)
-                    raise
-                except Exception as exc:
-                    if isinstance(before, (str, bytes)):
-                        context.record(stage.name, index, before, None, started, exc)
-                    raise
-                if isinstance(before, (str, bytes)) and isinstance(value, (str, bytes)):
-                    context.record(stage.name, index, before, value, started, None)
-                if isinstance(value, (str, bytes)):
-                    context.check_output(value, stage.name, index)
-            return value
+            return self._run(value, context)
+
+    def _run(
+        self, value: Any, context: ExecutionContext, collector: _TraceCollector | None = None
+    ) -> Any:
+        """Execute all stages under an already-active *context*."""
+        for index, stage in enumerate(self._stages):
+            context.charge_step(stage.name, index)
+            if stage.recipe_step is not None:
+                context.require_operation(stage.recipe_step.op, index)
+            started = perf_counter()
+            before = value
+            try:
+                value = stage.run(value, context, index)
+            except OperationError as exc:
+                if exc.step_index is None:
+                    exc.step_index = index
+                    exc.branch_path = context.branch_path
+                    exc.execution_id = context.execution_id
+                if isinstance(before, (str, bytes)):
+                    context.record(stage.name, index, before, None, started, exc)
+                raise
+            except Exception as exc:
+                if isinstance(before, (str, bytes)):
+                    context.record(stage.name, index, before, None, started, exc)
+                raise
+            if isinstance(before, (str, bytes)) and isinstance(value, (str, bytes)):
+                context.record(stage.name, index, before, value, started, None)
+            if isinstance(value, (str, bytes)):
+                context.check_output(value, stage.name, index)
+            if collector is not None:
+                collector.add(stage.name, before, value, context, index)
+        return value
 
     run = transform
     bake = transform
@@ -321,97 +383,39 @@ class Pipeline:
         elif policy is not None and policy is not context.policy:
             raise ValueError("pass either policy or context, not both")
 
-        accumulated_trace_bytes = 0
-        limit_trace_bytes = context.policy.max_trace_bytes
-
+        collector = _TraceCollector(max_preview_bytes, context.policy.max_trace_bytes)
         with active_policy(context.policy):
             if isinstance(value, (str, bytes)):
                 context.check_input(value)
-
-            trace: list[PipelineTrace] = []
-            for index, stage in enumerate(self._stages):
-                context.charge_step(stage.name, index)
-                if stage.recipe_step is not None:
-                    context.require_operation(stage.recipe_step.op, index)
-
-                started = perf_counter()
-                stage_input = value
-                try:
-                    value = stage.run(value)
-                except OperationError as exc:
-                    if exc.step_index is None:
-                        exc.step_index = index
-                        exc.branch_path = context.branch_path
-                        exc.execution_id = context.execution_id
-                    if isinstance(stage_input, (str, bytes)):
-                        context.record(stage.name, index, stage_input, None, started, exc)
-                    raise
-                except Exception as exc:
-                    if isinstance(stage_input, (str, bytes)):
-                        context.record(stage.name, index, stage_input, None, started, exc)
-                    raise
-
-                if isinstance(stage_input, (str, bytes)) and isinstance(value, (str, bytes)):
-                    context.record(stage.name, index, stage_input, value, started, None)
-                if isinstance(value, (str, bytes)):
-                    context.check_output(value, stage.name, index)
-
-                # Track logical size of inputs/outputs
-                in_size = _measure_trace_size(stage_input)
-                out_size = _measure_trace_size(value)
-
-                saved_in = stage_input
-                saved_out = value
-                truncated = False
-                if max_preview_bytes is not None:
-                    saved_in, in_trunc = _truncate_preview(stage_input, max_preview_bytes)
-                    saved_out, out_trunc = _truncate_preview(value, max_preview_bytes)
-                    truncated = in_trunc or out_trunc
-
-                # Trace buffer budget counts actually stored preview data
-                stored_in_size = _measure_trace_size(saved_in)
-                stored_out_size = _measure_trace_size(saved_out)
-                accumulated_trace_bytes += stored_in_size + stored_out_size + 64
-                if limit_trace_bytes is not None and accumulated_trace_bytes > limit_trace_bytes:
-                    raise context._limit(
-                        "max_trace_bytes",
-                        f"trace buffer exceeded {limit_trace_bytes} bytes",
-                        stage.name,
-                        index,
-                    )
-
-                trace.append(
-                    PipelineTrace(
-                        name=stage.name,
-                        input=saved_in,
-                        output=saved_out,
-                        input_size=in_size,
-                        output_size=out_size,
-                        truncated=truncated,
-                    )
-                )
-
-            return tuple(trace)
+            self._run(value, context, collector)
+        return tuple(collector.entries)
 
     def from_hex(self, delimiter: str = "Auto") -> Pipeline:
+        """Append ``From Hex`` (hexadecimal text to bytes)."""
         return self.then("From Hex", delimiter)
 
     def to_hex(self, delimiter: str = "None", bytes_per_line: int = 0) -> Pipeline:
+        """Append ``To Hex`` (bytes to hexadecimal text)."""
         return self.then("To Hex", delimiter, bytes_per_line)
 
     def from_base64(self, alphabet: str = "A-Za-z0-9+/=", strict: bool = False) -> Pipeline:
+        """Append ``From Base64`` (Base64 text to bytes)."""
         return self.then("From Base64", alphabet, True, strict)
 
     def to_base64(self, alphabet: str = "A-Za-z0-9+/=") -> Pipeline:
+        """Append ``To Base64`` (bytes to Base64 text)."""
         return self.then("To Base64", alphabet)
 
     def decode(self, encoding: str = "UTF-8 (65001)") -> Pipeline:
+        """Append ``Decode text`` (bytes to ``str`` using *encoding*)."""
         return self.then("Decode text", encoding)
 
     def encode(self, encoding: str = "UTF-8 (65001)") -> Pipeline:
+        """Append ``Encode text`` (``str`` to bytes using *encoding*)."""
         return self.then("Encode text", encoding)
 
     def digest(self, algorithm: str = "sha256", *, output: str = "hex") -> Pipeline:
+        """Append a :func:`pychef.ctf.digest` stage (default ``sha256`` as hex text)."""
         from .ctf import digest
 
         return self.apply(
@@ -420,12 +424,14 @@ class Pipeline:
         )
 
     def xor(self, key: str | bytes, *, key_format: str = "raw") -> Pipeline:
+        """Append a repeating-key XOR stage; *key_format* selects how a text key is decoded."""
         from .ctf import decode_bytes, xor_bytes
 
         decoded_key = decode_bytes(key, format=key_format)
         return self.apply(lambda value: xor_bytes(value, decoded_key), name="xor")
 
     def swap_endian(self, word_size: int = 4, *, strict: bool = True) -> Pipeline:
+        """Append a byte-order swap of *word_size*-byte words."""
         from .ctf import swap_endian
 
         return self.apply(
@@ -441,6 +447,7 @@ class Pipeline:
         signed: bool = False,
         offset: int = 0,
     ) -> Pipeline:
+        """Append :func:`pychef.ctf.unpack`; the stage yields an ``int``."""
         from .ctf import unpack
 
         return self.apply(
@@ -455,6 +462,7 @@ class Pipeline:
         endian: str = "little",
         signed: bool = False,
     ) -> Pipeline:
+        """Append :func:`pychef.ctf.pack`; the stage consumes an ``int`` and yields bytes."""
         from .ctf import pack
 
         return self.apply(
@@ -463,6 +471,7 @@ class Pipeline:
         )
 
     def hexdump(self, *, width: int = 16, start: int = 0) -> Pipeline:
+        """Append a :func:`pychef.ctf.hexdump` stage."""
         from .ctf import hexdump
 
         return self.apply(
@@ -471,6 +480,7 @@ class Pipeline:
         )
 
     def parse_packet(self, *, link_type: int = 1) -> Pipeline:
+        """Append :func:`pychef.packets.parse_packet`; the stage yields a ``dict``."""
         from .packets import parse_packet
 
         return self.apply(
@@ -484,6 +494,7 @@ class Pipeline:
         max_packets: int | None = 100_000,
         max_packet_size: int | None = 16 * 1024 * 1024,
     ) -> Pipeline:
+        """Append :func:`pychef.packets.parse_capture` for PCAP or PCAPNG data."""
         from .packets import parse_capture
 
         return self.apply(
@@ -509,6 +520,7 @@ class Pipeline:
         iv_format: str = "raw",
         append_tag: bool = True,
     ) -> Pipeline:
+        """Append :func:`pychef.ctf.aes_encrypt`."""
         from .ctf import aes_encrypt
 
         return self.apply(
@@ -539,6 +551,7 @@ class Pipeline:
         iv_format: str = "raw",
         tag_format: str = "raw",
     ) -> Pipeline:
+        """Append :func:`pychef.ctf.aes_decrypt`."""
         from .ctf import aes_decrypt
 
         return self.apply(

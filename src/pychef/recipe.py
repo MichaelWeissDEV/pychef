@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import suppress
@@ -22,10 +23,61 @@ from .types import BakeResult, Data, RecipeConfig, RecipeStep, to_bytes, to_text
 
 
 class Recipe:
-    """A validated sequence of data transformation operations."""
+    """A validated, reusable sequence of data transformation operations.
+
+    ``steps`` exposes the parsed :class:`RecipeStep` tuple. A recipe is immutable
+    in practice and can be executed any number of times with :meth:`execute`,
+    :func:`bake`, or :meth:`Chef.bake`.
+    """
 
     def __init__(self, config: RecipeConfig) -> None:
         self.steps = tuple(self._parse_step(step) for step in config)
+
+    def __repr__(self) -> str:
+        return f"Recipe({[step.op for step in self.steps]!r})"
+
+    def __len__(self) -> int:
+        return len(self.steps)
+
+    def to_config(self) -> list[dict[str, Any]]:
+        """Return the recipe as CyberChef-style step dictionaries.
+
+        The result can be passed back to :class:`Recipe` or :func:`bake`. Step
+        arguments are returned unchanged, so they may contain non-JSON values.
+        """
+        return [
+            {
+                "op": step.op,
+                "args": list(step.args),
+                **({"disabled": True} if step.disabled else {}),
+                **({"breakpoint": True} if step.breakpoint else {}),
+            }
+            for step in self.steps
+        ]
+
+    def to_json(self, *, indent: int | None = None) -> str:
+        """Serialize the recipe to JSON text.
+
+        Raises :class:`TypeError` if an argument is not JSON serializable (for
+        example ``bytes``). A structurally valid recipe is not guaranteed to be
+        accepted by every operation: arguments are only validated when it runs.
+        """
+        return json.dumps(self.to_config(), indent=indent)
+
+    @classmethod
+    def from_json(cls, text: str | bytes) -> Recipe:
+        """Build a recipe from JSON text such as :meth:`to_json` produces.
+
+        The JSON document must be a list of steps (strings or objects with ``op``
+        and optional ``args``).
+        """
+        try:
+            config = json.loads(text)
+        except ValueError as exc:
+            raise RecipeError(f"recipe is not valid JSON: {exc}") from exc
+        if not isinstance(config, list):
+            raise RecipeError("a JSON recipe must be a list of steps")
+        return cls(config)
 
     @staticmethod
     def _parse_step(step: RecipeStep | Mapping[str, Any] | str) -> RecipeStep:

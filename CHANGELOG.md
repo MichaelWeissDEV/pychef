@@ -7,6 +7,21 @@ All notable changes to this project are documented here. Releases follow
 
 ### Added
 
+- **Direct operations API (`pychef.ops`)**: typed, keyword-option functions for common
+  transformations (`from_hex`, `to_hex`, `from_base64`, `to_base64`, `from_base32`,
+  `to_base32`, `url_encode`, `url_decode`, `html_encode`, `html_decode`, `rot13`,
+  `reverse`, `xor`, `gzip_compress`, `gzip_decompress`, `md5`, `sha1`, `sha256`, `sha512`,
+  `digest`) plus `run_operation()` for any registered operation and `using_policy()` to
+  scope an `ExecutionPolicy`. The functions run through the regular engine, so
+  `ExecutionPolicy.safe()` (no network, bounded resources) applies exactly as for `bake()`.
+  `pychef.ops` is also reachable lazily as `pychef.ops`.
+- `Recipe.to_config()`, `Recipe.to_json()`, `Recipe.from_json()`, `len()` and a readable `repr()`.
+- Docstrings for all `Pipeline` convenience methods and the `pychef.ctf` hash helpers.
+- Documentation: reorganised navigation, "Recipes, pipelines, or direct operations",
+  Direct operations guide, cookbook, development notes, execution/worker API reference;
+  documentation snippets and all `examples/` scripts are tested.
+- Installed-wheel type-check (`tests/check_wheel_typing.py`), extended `tests/smoke_test.py`,
+  and a macOS/Windows CI job.
 - **HTTP Redirect Hardening & Credential Protection**:
   - Implemented origin normalization and verification across redirect chains (`_get_origin`).
   - Automatically strip sensitive headers (`Authorization`, `Proxy-Authorization`, `Cookie`, `Cookie2`, and user-configured `sensitive_headers`) whenever an HTTP redirect crosses origin boundaries (scheme, port, or normalized host).
@@ -79,6 +94,20 @@ All notable changes to this project are documented here. Releases follow
 - Default execution policy across `bake()` and `Chef()` changed to `ExecutionPolicy.safe()` (network disabled by default).
 - Structured error information on all `PyChefError` instances (`error_code`, `step_index`, `branch_path`, `execution_id`, `to_dict()`).
 - Error unpickling support (`__reduce__`) across processes for `OperationError`, `ExecutionLimitError`, and `ExecutionTimeoutError`.
+
+### Fixed
+
+- `Pipeline.concat()` branches now run inside the caller's single `ExecutionContext`.
+  Previously each branch created a fresh safe-default context, so step, branch and
+  deadline budgets were reset and an `unrestricted` outer policy was silently replaced by
+  safe defaults inside branches. Branch steps are now traced with their `branch_path`.
+- HTTP redirect responses are no longer drained with an unbounded `read()`; the body is
+  discarded by closing the connection (no hidden size limit; `max_response_bytes=None`
+  keeps its meaning for the final response).
+- `IsolatedWorker` deadlines now also cover the receive of a partially written IPC message
+  (previously `poll()` followed by a blocking `recv()` could wait forever); the reader is
+  stopped and the child terminated at the deadline.
+- `import pychef` no longer imports the AES implementation (loaded on first use).
 
 ## [0.1.1] - 2026-08-01
 

@@ -1,0 +1,42 @@
+# Type-check target for tests/test_public_ops_typing.py and tests/check_wheel_typing.py.
+# Stored as .txt so that repository-wide linters do not analyse the two intentional
+# errors on the last lines. Needs Python >= 3.11 semantics for typing.assert_type.
+from typing import assert_type
+
+from pychef import BakeResult, Chef, ExecutionPolicy, Pipeline, bake
+from pychef.ops import (
+    digest,
+    from_base64,
+    from_hex,
+    gzip_compress,
+    md5,
+    reverse,
+    rot13,
+    run_operation,
+    sha256,
+    to_base64,
+    to_hex,
+    xor,
+)
+
+assert_type(from_hex("41"), bytes)
+assert_type(from_base64("QQ=="), bytes)
+assert_type(to_hex(b"A"), str)
+assert_type(to_base64(b"A"), str)
+assert_type(xor(b"A", b"B"), bytes)
+assert_type(gzip_compress(b"A"), bytes)
+assert_type(sha256(b"A"), str)
+assert_type(md5("A"), str)
+assert_type(digest(b"A"), str)
+assert_type(digest(b"A", output="raw"), bytes)
+assert_type(rot13("A"), str)
+assert_type(rot13(b"A"), bytes)
+assert_type(reverse("A"), str)
+assert_type(reverse(b"A"), bytes)
+assert_type(run_operation("To Base64", b"A"), str | bytes)
+assert_type(bake("41", ["From Hex"]), str | bytes)
+assert_type(Chef(policy=ExecutionPolicy.safe()).bake_result("41", ["From Hex"]), BakeResult)
+assert_type(Pipeline().from_hex(), Pipeline)
+
+to_hex(b"A", "Space")  # intentional error: delimiter is keyword-only
+from_hex(1)  # intentional error: not str or bytes-like

@@ -596,7 +596,9 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         cast(Any, new)._pychef_redirect_count = count
 
         if fp:
-            fp.read()
+            # Never drain the redirect body: it is discarded anyway, and reading
+            # it would consume unbounded, possibly slow data. Closing the
+            # response drops the connection (urllib sends ``Connection: close``).
             fp.close()
 
         return self.parent.open(new, timeout=req.timeout)
