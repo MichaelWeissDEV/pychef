@@ -8,7 +8,7 @@ from time import perf_counter
 from typing import Any
 
 from .errors import OperationError, RecipeError
-from .execution import ExecutionContext, ExecutionPolicy, active_policy
+from .execution import ExecutionContext, ExecutionPolicy, active_context, resolve_context
 from .recipe import Recipe, _sanitize_error_message
 from .registry import OperationRegistry, registry
 from .types import RecipeStep
@@ -292,11 +292,11 @@ class Pipeline:
         deadline, and the network policy are never reset inside a branch.
         """
         if context is None:
-            context = ExecutionContext(policy=policy or ExecutionPolicy.safe())
+            context = resolve_context(policy)
         elif policy is not None and policy is not context.policy:
             raise ValueError("pass either policy or context, not both")
 
-        with active_policy(context.policy):
+        with active_context(context):
             if isinstance(value, (str, bytes)):
                 context.check_input(value)
             return self._run(value, context)
@@ -344,7 +344,7 @@ class Pipeline:
         policy: ExecutionPolicy | None = None,
     ) -> Iterator[Any]:
         """Stream transformations across *values* without buffering the full sequence."""
-        context = ExecutionContext(policy=policy or ExecutionPolicy.safe())
+        context = resolve_context(policy)
         for item in values:
             yield self.transform(item, context=context)
 
@@ -379,12 +379,12 @@ class Pipeline:
             raise ValueError("max_preview_bytes must be None or a non-negative integer")
 
         if context is None:
-            context = ExecutionContext(policy=policy or ExecutionPolicy.safe(), trace_enabled=True)
+            context = resolve_context(policy, trace=True)
         elif policy is not None and policy is not context.policy:
             raise ValueError("pass either policy or context, not both")
 
         collector = _TraceCollector(max_preview_bytes, context.policy.max_trace_bytes)
-        with active_policy(context.policy):
+        with active_context(context):
             if isinstance(value, (str, bytes)):
                 context.check_input(value)
             self._run(value, context, collector)

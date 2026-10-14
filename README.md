@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/cyberchef-py)](https://pypi.org/project/cyberchef-py/)
 [![License](https://img.shields.io/pypi/l/cyberchef-py)](LICENSE)
 
-PyChef is an unofficial, dependency-free, pure-Python library for CyberChef-style
+PyChef is an unofficial, pure-Python library for CyberChef-style
 data transformations. Call single operations as plain functions, run
 CyberChef-compatible recipes, or compose reusable pipelines. It needs no Node.js
 at runtime and applies safe resource limits by default. The package is typed
@@ -25,7 +25,8 @@ or
 uv add cyberchef-py
 ```
 
-Python 3.10 or newer is required. There are no runtime dependencies.
+Python 3.10 or newer is required. There are no runtime dependencies on Linux and macOS; on Windows the
+`tzdata` time zone database is installed automatically (Windows has no system copy).
 
 ```python
 import pychef

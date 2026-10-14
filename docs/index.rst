@@ -4,7 +4,7 @@ PyChef documentation
 PyChef is an unofficial, pure-Python data-transformation library inspired by
 CyberChef. Use it as a normal Python library: call single operations as
 functions, run CyberChef recipes, or build reusable pipelines. It has no runtime
-dependencies and needs no Node.js.
+dependencies (except ``tzdata`` on Windows) and needs no Node.js.
 
 The PyPI distribution is ``cyberchef-py``; the import is ``pychef``.
 PyChef registers 502 operation names from the pinned CyberChef 11.3.0 inventory.

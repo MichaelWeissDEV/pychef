@@ -18,7 +18,13 @@ def main() -> None:
     package = metadata("cyberchef-py")
     assert package["Name"] == "cyberchef-py"
     assert pychef.__version__ == version("cyberchef-py")
-    assert not requires("cyberchef-py"), "unexpected runtime dependencies"
+    # Only the Windows-only time zone database is allowed as a runtime dependency.
+    unexpected = [r for r in requires("cyberchef-py") or [] if not r.startswith("tzdata")]
+    assert not unexpected, f"unexpected runtime dependencies: {unexpected}"
+    if sys.platform == "win32":
+        import zoneinfo
+
+        assert zoneinfo.ZoneInfo("US/Eastern")
     assert "site-packages" in str(Path(pychef.__file__)), "pychef was not imported from an install"
 
     assert len(pychef.list_operations()) == 502

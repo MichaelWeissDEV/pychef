@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal, overload
 
-from ._engine import BytesLike, guard_input
+from ._engine import BytesLike, coerce_input, execute_direct
 
 
 @overload
@@ -26,7 +26,11 @@ def digest(
     """Hash with any :mod:`hashlib` algorithm; ``output`` is hex, base64, or raw bytes."""
     from ..ctf import digest as _digest
 
-    return _digest(guard_input(value), algorithm=algorithm, output=output)
+    return execute_direct(
+        algorithm.strip().lower(),
+        coerce_input(value),
+        lambda data: _digest(data, algorithm=algorithm, output=output),
+    )
 
 
 def md5(value: str | BytesLike) -> str:

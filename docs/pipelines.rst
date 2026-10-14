@@ -187,5 +187,7 @@ supplied by untrusted parties. For untrusted *recipes* (data), use
 ``ExecutionPolicy.untrusted()`` and :class:`pychef.IsolatedWorker`; see
 :doc:`errors-and-safety`.
 
-Pipeline helpers inherit nothing from your callable: a ``pychef.ops`` function
-called inside an ``apply`` stage uses the policy of the running pipeline.
+A ``pychef.ops`` function, ``bake`` or ``Pipeline`` called inside an ``apply`` stage
+joins the running pipeline's execution: same policy, same step budget, same
+deadline (see :doc:`direct-operations`). A conflicting policy is rejected with
+``ValueError``.

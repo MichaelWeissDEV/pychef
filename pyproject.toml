@@ -29,7 +29,8 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Typing :: Typed",
 ]
-dependencies = []
+# tzdata supplies the IANA time zone database where the operating system has none.
+dependencies = ["tzdata; platform_system == 'Windows'"]
 
 [project.urls]
 Homepage = "https://github.com/MichaelWeissDEV/pychef"

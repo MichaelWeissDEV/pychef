@@ -92,6 +92,18 @@ def _worker_entry(
             conn.close()
 
 
+# After the child has been killed the reader normally returns at once; this bounds the
+# extra wait (on top of the process termination grace of ``_terminate_process``).
+_READER_CLEANUP_SECONDS = 1.0
+_PARKED_READERS: list[tuple[threading.Thread, Any]] = []
+
+
+class _ReaderTimeout(TimeoutError):
+    """The deadline passed while receiving; ``reader_still_blocked`` flags a parked reader."""
+
+    reader_still_blocked = False
+
+
 def _recv_before_deadline(
     conn: Any, timeout: float, on_timeout: Callable[[], None] | None = None
 ) -> Any:
@@ -118,8 +130,18 @@ def _recv_before_deadline(
     if reader.is_alive():
         if on_timeout is not None:
             on_timeout()
-        reader.join(5.0)
-        raise TimeoutError
+        # Killing the child closes the write end of the pipe, which ends the blocked
+        # read with EOF on POSIX and Windows alike. The only exception is a
+        # descendant of the child that inherited the handle; then the thread cannot be
+        # interrupted from here, so it is parked (daemon) together with its
+        # connection instead of closing a handle another thread still uses.
+        reader.join(_READER_CLEANUP_SECONDS)
+        failure = _ReaderTimeout()
+        if reader.is_alive():
+            failure.reader_still_blocked = True
+            _PARKED_READERS.append((reader, conn))
+            _PARKED_READERS[:] = [item for item in _PARKED_READERS if item[0].is_alive()]
+        raise failure
     if "error" in outcome:
         raise outcome["error"]
     return outcome["payload"]
@@ -312,6 +334,7 @@ class IsolatedWorker:
         child_conn.close()
 
         payload: dict[str, Any] | None = None
+        keep_connection_open = False
 
         try:
             if timeout is not None:
@@ -320,7 +343,8 @@ class IsolatedWorker:
                     payload = _receive_payload(
                         parent_conn, remaining, lambda: self._terminate_process(process)
                     )
-                except TimeoutError:
+                except _ReaderTimeout as timed_out:
+                    keep_connection_open = timed_out.reader_still_blocked
                     self._terminate_process(process)
                     raise ExecutionTimeoutError(
                         f"Isolated worker exceeded deadline of {timeout}s",
@@ -345,8 +369,9 @@ class IsolatedWorker:
                 ) from None
             raise PyChefError(msg) from None
         finally:
-            with suppress(OSError):
-                parent_conn.close()
+            if not keep_connection_open:
+                with suppress(OSError):
+                    parent_conn.close()
             self._terminate_process(process)
             self._current_process = None
 

@@ -9,10 +9,22 @@ Requirements
 ------------
 
 Python 3.10 or newer on Linux, macOS, or Windows. There are no runtime
-dependencies.
+dependencies on Linux and macOS. On Windows, which ships no IANA time zone
+database, the small ``tzdata`` package is installed automatically so that the
+date and time operations work after a normal install.
 
 Install
 -------
+
+.. note::
+
+   ``pip install cyberchef-py`` installs the newest *published* release. The
+   ``pychef.ops`` module, ``Recipe.to_json`` and the other additions described in
+   this documentation first appear in **0.2.0**; until that release is on PyPI,
+   install from the GitHub repository (``pip install
+   git+https://github.com/MichaelWeissDEV/pychef``) or a built wheel to try them.
+   The ``latest`` documentation tracks the development branch; ``stable``
+   documents the newest release.
 
 The distribution and the import name are intentionally different:
 

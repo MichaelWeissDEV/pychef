@@ -7,15 +7,25 @@ error handling are therefore identical regardless of the entry point.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any
+from time import perf_counter
+from typing import Any, TypeVar
 
-from ..execution import ExecutionPolicy, active_policy, current_policy
+from ..execution import (
+    ExecutionContext,
+    ExecutionPolicy,
+    active_context,
+    active_policy,
+    current_context,
+    current_policy,
+    resolve_context,
+)
 from ..recipe import Recipe
 from ..registry import OperationRegistry, registry
 from ..types import Data, RecipeStep
 
+T = TypeVar("T")
 BytesLike = bytes | bytearray | memoryview
 
 
@@ -40,8 +50,57 @@ def using_policy(policy: ExecutionPolicy) -> Iterator[None]:
     """
     if not isinstance(policy, ExecutionPolicy):
         raise TypeError("policy must be an ExecutionPolicy")
+    running = current_context()
+    if running is not None and policy != running.policy:
+        raise ValueError(
+            "using_policy() cannot change the policy inside a running execution "
+            "(for example inside Pipeline.apply); nested calls inherit it"
+        )
     with active_policy(policy):
         yield
+
+
+def direct_context(policy: ExecutionPolicy | None = None) -> ExecutionContext:
+    """Context for a direct call: the running one when nested, else a fresh one.
+
+    Independent top-level calls each get their own context (and budgets); calls
+    made while an execution is running share that execution's context.
+    """
+    if current_context() is not None:
+        return resolve_context(policy)
+    return ExecutionContext(policy=effective_policy(policy))
+
+
+def execute_direct(
+    name: str,
+    value: Data,
+    function: Callable[[Data], T],
+    *,
+    policy: ExecutionPolicy | None = None,
+) -> T:
+    """Run a pure-Python *function* under the shared execution rules.
+
+    Validates the input, charges one step to the (shared) context, checks the
+    operation permission, and applies output limits and tracing, so helpers that do
+    not go through the registry obey the same resource model as registry operations.
+    Exceptions raised by *function* propagate unchanged.
+    """
+    context = direct_context(policy)
+    with active_context(context):
+        index = context.position
+        context.check_input(value, name, index)
+        context.charge_step(name, index)
+        context.require_operation(name, index)
+        started = perf_counter()
+        try:
+            result = function(value)
+        except Exception as error:
+            context.record(name, index, value, None, started, error)
+            raise
+        if isinstance(result, (str, bytes)):
+            context.check_output(result, name, index)
+            context.record(name, index, value, result, started, None)
+        return result
 
 
 def coerce_input(value: Any) -> Data:
@@ -76,7 +135,7 @@ def run_operation(
     result, _ = Recipe([step]).execute(
         coerce_input(value),
         operation_registry=operation_registry,
-        policy=effective_policy(policy),
+        context=direct_context(policy),
     )
     return result
 
@@ -88,12 +147,3 @@ def as_bytes(result: Data) -> bytes:
 
 def as_text(result: Data) -> str:
     return result if isinstance(result, str) else result.decode("utf-8")
-
-
-def guard_input(value: Any, policy: ExecutionPolicy | None = None) -> Data:
-    """Validate type and apply the policy's input limits for pure-Python helpers."""
-    from ..execution import ExecutionContext
-
-    data = coerce_input(value)
-    ExecutionContext(policy=effective_policy(policy)).check_input(data)
-    return data

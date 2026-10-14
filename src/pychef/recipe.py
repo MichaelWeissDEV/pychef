@@ -17,7 +17,7 @@ from .errors import (
     OperationPermissionError,
     RecipeError,
 )
-from .execution import ExecutionContext, ExecutionPolicy, active_policy
+from .execution import ExecutionContext, ExecutionPolicy, active_context, resolve_context
 from .registry import OperationRegistry, registry
 from .types import BakeResult, Data, RecipeConfig, RecipeStep, to_bytes, to_text
 
@@ -117,10 +117,10 @@ class Recipe:
         to account several executions against one budget.
         """
         if context is None:
-            context = ExecutionContext(policy=policy or ExecutionPolicy.safe())
+            context = resolve_context(policy)
         elif policy is not None and policy is not context.policy:
             raise ValueError("pass either policy or context, not both")
-        with active_policy(context.policy):
+        with active_context(context):
             context.check_input(value)
             result, progress = self._run(value, operation_registry, context)
             context.check_output(result)
@@ -431,6 +431,12 @@ def _sanitize_error_message(message: str, args: Sequence[Any] = (), value: Any =
     if value is not None:
         all_secrets.extend(extract_secrets(value))
 
+    # A time zone identifier from a controlled option is not sensitive and is needed
+    # to diagnose a missing zone; only an exact, strictly shaped identifier is kept.
+    zone = _UNKNOWN_ZONE.fullmatch(sanitized)
+    if zone is not None:
+        all_secrets = [secret for secret in all_secrets if secret != zone.group(1)]
+
     for secret in all_secrets:
         if secret in sanitized:
             sanitized = sanitized.replace(secret, "[REDACTED]")
@@ -454,6 +460,8 @@ def _sanitize_error_message(message: str, args: Sequence[Any] = (), value: Any =
 
     return sanitized
 
+
+_UNKNOWN_ZONE = re.compile(r"(?:.*: )?unknown timezone: ([A-Za-z0-9_+\-/]{1,64})(?: \(.*\))?", re.S)
 
 _FATAL_ERRORS = (ExecutionLimitError, OperationPermissionError)
 
@@ -666,7 +674,8 @@ class Chef:
         progress = 0
         error: Exception | None = None
         result: Data = value
-        context = ExecutionContext(policy=eff_policy, trace_enabled=trace)
+        context = resolve_context(policy or self.policy, trace=trace)
+        trace_start = len(context.trace)
         try:
             result, progress = parsed.execute(
                 value, operation_registry=self.registry, context=context
@@ -683,7 +692,7 @@ class Chef:
             progress=progress,
             duration_ms=duration_ms,
             error=error,
-            trace=tuple(context.trace),
+            trace=tuple(context.trace[trace_start:]),
         )
 
     def bake(

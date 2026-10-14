@@ -1,12 +1,16 @@
 # Library DX and release-readiness report
 
-Prepared for review; **nothing has been committed, pushed, tagged, or published.**
-All changes are uncommitted in the working tree.
+> **Status note (superseded in part).** This report was written before commit `02eb781`,
+> which contains this work. The current state, the Windows CI failure, and the later
+> context/Windows fixes are in `pychef-0.2.0-final-readiness.md`. Statements below that
+> say "uncommitted", "no runtime dependencies", or "pending CI" describe the earlier state.
+
+Prepared for review; at writing time nothing was committed, pushed, tagged, or published.
 
 ## 1-2. Commits
 
 * Base commit: `9d3906398c9bb3e0edcbb35d2596c156e636633d` (package version `0.1.1`).
-* Current commit: same; the work is an uncommitted working tree on `main`.
+* Work was subsequently committed as `02eb781`.
 
 ## 3-5. Public API design, new imports, direct operations
 

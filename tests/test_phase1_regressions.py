@@ -266,3 +266,87 @@ def test_isolated_worker_reports_broken_child_as_pychef_error(
     assert "unpickl" not in type(excinfo.value).__name__.lower()
     assert worker._current_process is None
     assert not [p for p in mp.active_children() if p.is_alive()]
+
+
+# --- worker deadline: finalised lifecycle -------------------------------------
+
+
+def _silent_entry(conn: object, *_args: object) -> None:
+    import time
+
+    time.sleep(60)
+
+
+def _stalled_large_frame_entry(conn: object, *_args: object) -> None:
+    import os
+    import struct
+    import time
+
+    fd = conn.fileno()  # type: ignore
+    os.write(fd, struct.pack("!i", 50_000_000) + b"x" * 200_000)
+    time.sleep(60)
+
+
+def _no_reader_threads() -> bool:
+    return not [t for t in threading.enumerate() if t.name == "pychef-worker-recv" and t.is_alive()]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        pytest.param(
+            _stalled_large_frame_entry,
+            id="large-partial-frame",
+            marks=pytest.mark.skipif(sys.platform == "win32", reason="POSIX Connection framing"),
+        ),
+        pytest.param(_silent_entry, id="silent-child"),
+    ],
+)
+def test_worker_timeout_returns_promptly_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, entry: object
+) -> None:
+    import pychef.worker as worker_module
+
+    monkeypatch.setattr(worker_module, "_worker_entry", entry)
+    worker = IsolatedWorker(timeout=1.0)
+    started = time.monotonic()
+    with pytest.raises(ExecutionTimeoutError):
+        worker.run("41", ["From Hex"])
+    # deadline + bounded cleanup (termination grace and reader join), never the old 5 s join
+    assert time.monotonic() - started < 1.0 + 1.0 + 3.0
+    assert _no_reader_threads()
+    assert worker._current_process is None
+    assert not [p for p in mp.active_children() if p.is_alive()]
+
+
+def test_blocked_reader_is_parked_not_waited_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A descendant holding the pipe's write end keeps the read blocked after the kill."""
+    import pychef.worker as worker_module
+
+    reader, writer = mp.Pipe(duplex=False)  # the writer plays the role of an inherited handle
+    started = time.monotonic()
+    try:
+        with pytest.raises(worker_module._ReaderTimeout) as excinfo:
+            _recv_before_deadline(reader, 0.2, None)
+        assert excinfo.value.reader_still_blocked
+        assert time.monotonic() - started < 0.2 + worker_module._READER_CLEANUP_SECONDS + 1.0
+    finally:
+        writer.close()  # releases the parked reader thread
+    deadline = time.monotonic() + 5
+    while worker_module._PARKED_READERS and time.monotonic() < deadline:
+        worker_module._PARKED_READERS[:] = [
+            i for i in worker_module._PARKED_READERS if i[0].is_alive()
+        ]
+        time.sleep(0.05)
+    assert not worker_module._PARKED_READERS
+    reader.close()
+
+
+def test_worker_without_deadline_returns_results() -> None:
+    worker = IsolatedWorker(timeout=None, policy=ExecutionPolicy(cooperative_deadline_seconds=None))
+    assert worker.run("414243", ["From Hex", "To Base64"]).result == "QUJD"
+    large = worker.run(
+        "41" * 2_000_000, ["From Hex", "To Base64"], policy=ExecutionPolicy.unrestricted()
+    )
+    assert len(large.result) == 2_666_668
+    assert _no_reader_threads()

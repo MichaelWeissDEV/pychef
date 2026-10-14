@@ -834,10 +834,15 @@ class ExecutionContext:
             )
 
 
-# Scoped (not global) holder so operation implementations, which only receive
-# ``(value, args)``, can honour the policy of the execution that invoked them.
+# Scoped (not global) holders so operation implementations, which only receive
+# ``(value, args)``, can honour the policy -- and nested calls the budgets -- of the
+# execution that invoked them. ContextVars are per thread; asyncio tasks inherit a
+# copy that refers to the *same* ExecutionContext object.
 _active_policy: contextvars.ContextVar[ExecutionPolicy | None] = contextvars.ContextVar(
     "pychef_active_policy", default=None
+)
+_active_context: contextvars.ContextVar[ExecutionContext | None] = contextvars.ContextVar(
+    "pychef_active_context", default=None
 )
 
 
@@ -850,6 +855,45 @@ def active_policy(policy: ExecutionPolicy) -> Iterator[None]:
         _active_policy.reset(token)
 
 
+@contextmanager
+def active_context(context: ExecutionContext) -> Iterator[None]:
+    """Make *context* (and its policy) the running execution for nested calls."""
+    context_token = _active_context.set(context)
+    policy_token = _active_policy.set(context.policy)
+    try:
+        yield
+    finally:
+        _active_policy.reset(policy_token)
+        _active_context.reset(context_token)
+
+
 def current_policy() -> ExecutionPolicy | None:
     """Policy of the running execution, or ``None`` outside of one (legacy direct calls)."""
     return _active_policy.get()
+
+
+def current_context() -> ExecutionContext | None:
+    """The running :class:`ExecutionContext`, or ``None`` outside of an execution."""
+    return _active_context.get()
+
+
+def resolve_context(
+    policy: ExecutionPolicy | None = None, *, trace: bool = False
+) -> ExecutionContext:
+    """Return the running context, or create a new one for a top-level call.
+
+    Inside a running execution the existing context is shared, so budgets,
+    deadline, execution id and branch path continue; a *policy* that differs from
+    the running one is rejected because a nested call may not replace (and thereby
+    widen) the limits and permissions the host granted. Outside any execution a new
+    context is created with *policy* or :meth:`ExecutionPolicy.safe`.
+    """
+    running = _active_context.get()
+    if running is None:
+        return ExecutionContext(policy=policy or ExecutionPolicy.safe(), trace_enabled=trace)
+    if policy is not None and policy != running.policy:
+        raise ValueError(
+            "a different ExecutionPolicy cannot be set inside a running execution; "
+            "nested calls inherit the policy of the outer execution"
+        )
+    return running

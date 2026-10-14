@@ -191,13 +191,26 @@ def _moment_render(value: datetime, format_string: str) -> str:
     return pattern.sub(lambda match: tokens[match.group()], normalized_format)
 
 
+def _tz_database_available() -> bool:
+    try:
+        ZoneInfo("Etc/UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
+    return True
+
+
 def _zone(name: str) -> timezone | ZoneInfo:
     if name == "UTC":
         return timezone.utc
     try:
         return ZoneInfo(name)
     except ZoneInfoNotFoundError as exc:
-        raise ValueError(f"unknown timezone: {name}") from exc
+        hint = (
+            " (no IANA time zone database found; install the 'tzdata' package)"
+            if not _tz_database_available()
+            else ""
+        )
+        raise ValueError(f"unknown timezone: {name}{hint}") from exc
 
 
 def _parse_moment(value: str, format_string: str, zone_name: str) -> datetime:

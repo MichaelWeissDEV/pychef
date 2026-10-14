@@ -3,7 +3,9 @@
 All notable changes to this project are documented here. Releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-14
+
+First release since 0.1.1.
 
 ### Added
 
@@ -97,6 +99,22 @@ All notable changes to this project are documented here. Releases follow
 
 ### Fixed
 
+- **Windows time zones**: `Translate DateTime Format` and the other time zone operations
+  failed on Windows with `ZoneInfoNotFoundError` because Windows has no IANA database.
+  `tzdata` is now a Windows-only runtime dependency (`tzdata; platform_system == 'Windows'`).
+  A missing zone now reports its identifier (and a `tzdata` hint when no database exists)
+  instead of `[REDACTED]`; the sanitizer is otherwise unchanged.
+- **One execution, one context**: `Recipe.execute`, `bake`, `Chef`, `Pipeline` (including
+  `iter_transform`), and `pychef.ops` now share the running `ExecutionContext` when called
+  inside an execution (for example from `Pipeline.apply`): step budget, deadline, trace,
+  execution id, and branch path continue instead of restarting. A different
+  `ExecutionPolicy` inside a running execution is rejected with `ValueError` (no silent
+  privilege escalation). Independent top-level calls keep independent contexts.
+- Hash helpers (`pychef.ops.md5/sha1/sha256/sha512/digest`) now charge a step and apply the
+  input limit, output limit, deadline, and trace like every other direct operation.
+- `IsolatedWorker`: malformed or undecodable result messages raise `PyChefError`; the reader
+  cleanup after a timeout is bounded (1 s) instead of 5 s and parks a reader thread that
+  cannot be interrupted rather than closing its handle.
 - `Pipeline.concat()` branches now run inside the caller's single `ExecutionContext`.
   Previously each branch created a fresh safe-default context, so step, branch and
   deadline budgets were reset and an `unrestricted` outer policy was silently replaced by
@@ -108,6 +126,18 @@ All notable changes to this project are documented here. Releases follow
   (previously `poll()` followed by a blocking `recv()` could wait forever); the reader is
   stopped and the child terminated at the deadline.
 - `import pychef` no longer imports the AES implementation (loaded on first use).
+
+### Known limitations
+
+- Registered operations are not all byte-for-byte CyberChef-identical for every option; see
+  `COMPATIBILITY.md` and the compatibility page for the documented boundaries.
+- `ExecutionPolicy` limits are cooperative (checked between steps); only `IsolatedWorker` on
+  Linux can enforce a hard memory limit. A stalled operation inside a single step is not
+  interrupted in-process.
+- `Pipeline.apply` callables are trusted Python code and are not sandboxed.
+- `IsolatedWorker` deadlines can overshoot by up to ~3 s (termination grace and reader
+  cleanup); a descendant process that keeps the result pipe open can park one daemon thread.
+- Worker behaviour is platform dependent (spawn start method everywhere; hard limits Linux-only).
 
 ## [0.1.1] - 2026-08-01
 

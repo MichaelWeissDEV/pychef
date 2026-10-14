@@ -12,5 +12,6 @@ def test_distribution_metadata_matches_runtime_package() -> None:
     assert package["Name"] == "cyberchef-py"
     assert package["Requires-Python"] == ">=3.10"
     requirements = package.get_all("Requires-Dist")
-    assert requirements is None or requirements == []
+    # The only runtime dependency is the Windows-only IANA time zone database.
+    assert requirements == ["tzdata; platform_system == 'Windows'"]
     assert pychef.__version__ == version("cyberchef-py")

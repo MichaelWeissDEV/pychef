@@ -140,3 +140,32 @@ PyChef operations are completely catalogued and inspectable at runtime via :func
    print(spec.name, spec.category, spec.description)
    for arg in spec.arguments:
        print(f"Arg: {arg.name} (type: {arg.type}, default: {arg.default})")
+
+Policy, context, and the host/recipe boundary
+---------------------------------------------
+
+An :class:`~pychef.ExecutionPolicy` says what is allowed (limits, network). An
+:class:`~pychef.ExecutionContext` is the state of one running execution (steps used,
+branches, depth, deadline, trace, execution id). One execution has one context, no
+matter whether it runs through ``bake``, ``Chef``, ``Pipeline`` or ``pychef.ops``;
+nested calls inherit it and cannot reset it (details in :doc:`direct-operations`).
+
+The policy is chosen by the **host** -- the code that starts the execution. Settings
+inside a recipe, and nested calls, cannot replace it: supplying a different policy
+inside a running execution raises ``ValueError`` instead of widening permissions.
+Host-written Python callables (``Pipeline.apply``) are trusted and may do anything the
+host process can; the policy governs registered operations, not arbitrary Python.
+Disabling an optional limit with ``None`` is a deliberate host decision and stays
+disabled for nested calls; it does not authorize anything beyond the policy itself.
+
+``IsolatedWorker`` deadlines
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The worker deadline covers receiving the whole result message, including a message
+the child stalls in the middle of. At the deadline the child is terminated (up to
+about two seconds of grace before it is killed) and the reader thread is joined for
+at most one more second. Total overshoot is therefore bounded by roughly three
+seconds. If a *descendant* of the child kept the pipe open, the blocked reader thread
+cannot be interrupted portably; it is parked as a daemon thread and its connection is
+left open until the handle is released. Without a deadline (``timeout=None`` and
+``cooperative_deadline_seconds=None``) the parent waits indefinitely for the child.
