@@ -98,6 +98,18 @@ _READER_CLEANUP_SECONDS = 1.0
 _PARKED_READERS: list[tuple[threading.Thread, Any]] = []
 
 
+def _prune_parked_readers() -> None:
+    """Drop (and close) parked readers whose thread has since finished."""
+    alive = []
+    for reader, parked_conn in _PARKED_READERS:
+        if reader.is_alive():
+            alive.append((reader, parked_conn))
+        else:
+            with suppress(OSError):
+                parked_conn.close()
+    _PARKED_READERS[:] = alive
+
+
 class _ReaderTimeout(TimeoutError):
     """The deadline passed while receiving; ``reader_still_blocked`` flags a parked reader."""
 
@@ -140,7 +152,7 @@ def _recv_before_deadline(
         if reader.is_alive():
             failure.reader_still_blocked = True
             _PARKED_READERS.append((reader, conn))
-            _PARKED_READERS[:] = [item for item in _PARKED_READERS if item[0].is_alive()]
+            _prune_parked_readers()
         raise failure
     if "error" in outcome:
         raise outcome["error"]
@@ -246,6 +258,7 @@ class IsolatedWorker:
     ) -> BakeResult:
         if self._closed:
             raise RuntimeError("IsolatedWorker is closed")
+        _prune_parked_readers()  # release connections of readers that have since ended
 
         if not self._lock.acquire(blocking=False):
             raise RuntimeError(

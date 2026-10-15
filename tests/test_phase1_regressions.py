@@ -334,9 +334,7 @@ def test_blocked_reader_is_parked_not_waited_for(monkeypatch: pytest.MonkeyPatch
         writer.close()  # releases the parked reader thread
     deadline = time.monotonic() + 5
     while worker_module._PARKED_READERS and time.monotonic() < deadline:
-        worker_module._PARKED_READERS[:] = [
-            i for i in worker_module._PARKED_READERS if i[0].is_alive()
-        ]
+        worker_module._prune_parked_readers()
         time.sleep(0.05)
     assert not worker_module._PARKED_READERS
     reader.close()

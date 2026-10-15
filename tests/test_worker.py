@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 import pytest
@@ -29,12 +30,63 @@ def test_isolated_worker_context_manager() -> None:
         assert out2.result == b"AB"
 
 
+def _block_forever(value: Any, args: Any) -> Any:
+    """Module-level so it can be pickled into a spawned worker (macOS/Windows)."""
+    import time
+
+    time.sleep(120)
+    return value
+
+
+def _blocking_registry() -> Any:
+    from pychef.registry import Operation, OperationRegistry
+
+    registry = OperationRegistry(manifest={})
+    registry.register(Operation("Block Forever", _block_forever, category="test"))
+    return registry
+
+
 def test_isolated_worker_timeout_termination() -> None:
-    worker = IsolatedWorker(timeout=0.02)
-    # High cost Argon2 will take hundreds of ms in pure-Python
-    recipe = [{"op": "Argon2", "args": [64, 50, 4, 1024, "argon2i"]}]
+    """A blocked operation must hit the deadline; nothing depends on argument validation."""
+    import multiprocessing as mp
+    import time
+
+    worker = IsolatedWorker(timeout=1.0, operation_registry=_blocking_registry())
+    started = time.monotonic()
     with pytest.raises(ExecutionTimeoutError):
-        worker.run("test password", recipe)
+        worker.run("x", ["Block Forever"])
+    assert time.monotonic() - started < 15  # deadline + spawn + bounded cleanup
+    assert worker._current_process is None
+    assert not [p for p in mp.active_children() if p.is_alive()]
+    assert not [t for t in threading.enumerate() if t.name == "pychef-worker-recv"]
+    # the worker object stays usable after a timeout
+    assert worker.run("41", ["Comment"]).result == "41"
+
+
+def test_isolated_worker_repeated_timeouts_do_not_leak() -> None:
+    import multiprocessing as mp
+
+    worker = IsolatedWorker(timeout=0.5, operation_registry=_blocking_registry())
+    for _ in range(3):
+        with pytest.raises(ExecutionTimeoutError):
+            worker.run("x", ["Block Forever"])
+    assert not [p for p in mp.active_children() if p.is_alive()]
+    assert not [t for t in threading.enumerate() if t.name == "pychef-worker-recv"]
+
+
+def test_argon2_invalid_arguments_raise_operation_error() -> None:
+    from pychef import OperationError
+
+    with pytest.raises(OperationError, match="hash length must be an integer"):
+        bake("pw", [{"op": "Argon2", "args": [64, 50, 4, 1024, "argon2i"]}])
+
+
+def test_argon2_valid_arguments_are_accepted() -> None:
+    salt = {"string": "saltsalt", "option": "UTF8"}
+    args = [salt, 1, 8, 1, 16, "Argon2i", "Hex"]
+    assert bake("pw", [{"op": "Argon2", "args": args}]) == bake_isolated(
+        "pw", [{"op": "Argon2", "args": args}], timeout=60
+    )
 
 
 def test_isolated_worker_limit_error_propagated() -> None:
