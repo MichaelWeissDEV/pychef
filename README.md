@@ -2,6 +2,7 @@
 
 [![Documentation Status](https://readthedocs.org/projects/cyberchef-py/badge/?version=latest)](https://cyberchef-py.readthedocs.io/en/latest/?badge=latest)
 [![PyPI](https://img.shields.io/pypi/v/cyberchef-py)](https://pypi.org/project/cyberchef-py/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/cyberchef-py?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=BLUE&left_text=downloads)](https://pepy.tech/projects/cyberchef-py)
 [![Python](https://img.shields.io/pypi/pyversions/cyberchef-py)](https://pypi.org/project/cyberchef-py/)
 [![License](https://img.shields.io/pypi/l/cyberchef-py)](LICENSE)
 
