@@ -90,10 +90,12 @@ checkout.
    python -c "import pychef; print(pychef.__version__)"
    ```
 
-10. Create an annotated tag matching the package version and push it, then create
-    a GitHub release from that tag. The `Publish to PyPI` workflow checks that
-    the tag equals `v<package version>` and that the built artifact names carry
-    that version, then publishes after its environment approval.
+10. Create an annotated tag matching the package version and push it. Pushing a tag
+    `vMAJOR.MINOR.PATCH` starts the `Publish to PyPI` workflow, which checks that the tag
+    equals `v<package version>`, that the version is not yet on PyPI and that the built
+    artifact names carry that version, then publishes after its environment approval.
+    Afterwards create a GitHub release from the same tag for the release notes
+    (publishing the release does not publish to PyPI).
 
     ```console
     git tag -a vX.Y.Z -m "PyChef X.Y.Z"
