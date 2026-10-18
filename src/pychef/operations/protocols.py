@@ -341,7 +341,9 @@ _ASN1_TAG_NAMES = {
 }
 
 
-def _asn1_dump(data: bytes, position: int, indent: str = "") -> tuple[list[str], int]:
+def _asn1_dump(
+    data: bytes, position: int, indent: str = "", truncate: int = 32
+) -> tuple[list[str], int]:
     if position >= len(data):
         return [], position
     tag = data[position]
@@ -365,17 +367,23 @@ def _asn1_dump(data: bytes, position: int, indent: str = "") -> tuple[list[str],
         lines = [name]
         child_position = position
         while child_position < end:
-            children, child_position = _asn1_dump(data, child_position, indent + "  ")
+            children, child_position = _asn1_dump(
+                data, child_position, indent + "  ", truncate=truncate
+            )
             lines.extend(children)
         return lines, end
-    return [f"{indent}{name} {content.hex()}".rstrip()], end
+    hex_content = content.hex()
+    if truncate and len(hex_content) > truncate:
+        hex_content = hex_content[: truncate - 3] + "..."
+    return [f"{indent}{name} {hex_content}".rstrip()], end
 
 
 @implementation("Parse ASN.1 hex string", category="Public Key")
 def parse_asn1_hex(value: Data, args: Args) -> str:
     data = bytes.fromhex(re.sub(r"\s+", "", to_text(value)))
     start = require_int(arg(args, 0, 0), name="starting index")
-    lines, _position = _asn1_dump(data, start)
+    truncate = require_int(arg(args, 1, 32), name="truncate octet strings longer than")
+    lines, _position = _asn1_dump(data, start, truncate=truncate)
     return "\n".join(lines) + ("\n" if lines else "")
 
 

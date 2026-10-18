@@ -1,7 +1,30 @@
-"""Dependency-free PGP-style key, encryption, and signature operations.
+"""PyChef-proprietary PGP-compatible key, encryption, and signature operations.
+
+IMPORTANT: This module implements a PyChef-specific PGP-like format (identified by
+"PyChef-PGP-1" magic). It is NOT compatible with standard OpenPGP implementations
+such as GnuPG, OpenPGP.js, or other RFC 4880 compliant tools.
+
+Key differences from OpenPGP:
+- Uses a custom magic identifier "PyChef-PGP-1" instead of OpenPGP packet headers
+- Uses JSON serialization for key material instead of OpenPGP binary format
+- Uses simplified packet structure that omits many OpenPGP features
+- Signature and encryption formats are proprietary
+
+This format is only intended for use within PyChef recipes and workflows.
+For actual OpenPGP interoperability, use a dedicated OpenPGP library.
 
 The module uses conventional ASCII armour, RSA/ECDSA/ECDH primitives, AES-256
 counter mode, encrypt-then-MAC, and password-protected private-key material.
+
+Security considerations:
+- The proprietary format has not undergone the same level of cryptographic review
+  as OpenPGP
+- Interoperability with standard OpenPGP tools is NOT guaranteed
+- Do NOT use this for production cryptographic needs where OpenPGP compatibility
+  is required
+
+For PyChef-to-PyChef operations within a single workflow, this implementation
+provides acceptable security properties using standard cryptographic primitives.
 """
 
 from __future__ import annotations
@@ -401,6 +424,29 @@ def _return_plaintext(data: bytes) -> Data:
 
 @implementation("Generate PGP Key Pair", category="PGP")
 def generate_pgp_key_pair(value: Data, args: Args) -> str:
+    """Generate a PyChef-proprietary PGP key pair.
+
+    IMPORTANT: This generates keys in PyChef's proprietary format ("PyChef-PGP-1").
+    These keys are NOT compatible with standard OpenPGP implementations like GnuPG.
+
+    Use only for PyChef-to-PyChef operations within a single workflow.
+    For actual OpenPGP compatibility, use a dedicated OpenPGP library.
+
+    Supported key types:
+    - RSA-1024, RSA-2048, RSA-4096
+    - ECC-256 (P-256), ECC-384 (P-384), ECC-521 (P-521)
+
+    Args:
+        0. Key type (string): One of "RSA-1024", "RSA-2048", "RSA-4096",
+           "ECC-256", "ECC-384", "ECC-521"
+        1. Password (string): Optional password to protect the private key
+        2. Name (string): Optional name for the key
+        3. Email (string): Optional email address for the key
+
+    Returns:
+        ASCII-armoured private and public key pair concatenated.
+        The private key comes first, followed by the public key.
+    """
     del value
     key_type = str(arg(args, 0, "RSA-1024"))
     password = str(arg(args, 1, ""))
@@ -453,6 +499,24 @@ def generate_pgp_key_pair(value: Data, args: Args) -> str:
 
 @implementation("PGP Encrypt", category="PGP")
 def pgp_encrypt(value: Data, args: Args) -> str:
+    """Encrypt data using PyChef-proprietary PGP format.
+
+    IMPORTANT: This uses PyChef's proprietary format ("PyChef-PGP-1").
+    Encrypted messages are NOT compatible with standard OpenPGP implementations.
+
+    Use only for PyChef-to-PyChef operations within a single workflow.
+    For actual OpenPGP compatibility, use a dedicated OpenPGP library.
+
+    Args:
+        0. Recipient Public Key (string): ASCII-armoured PyChef PGP public key
+
+    Returns:
+        ASCII-armoured encrypted message.
+
+    Note:
+        Uses AES-256 in counter mode with HMAC for authenticated encryption.
+        The message can only be decrypted with the corresponding PyChef private key.
+    """
     public = str(arg(args, 0, ""))
     if not public:
         raise ValueError("Enter the public key of the recipient")
@@ -461,6 +525,21 @@ def pgp_encrypt(value: Data, args: Args) -> str:
 
 @implementation("PGP Decrypt", category="PGP")
 def pgp_decrypt(value: Data, args: Args) -> Data:
+    """Decrypt data encrypted with PyChef's proprietary PGP format.
+
+    IMPORTANT: This only decrypts messages created by PyChef's "PGP Encrypt" or
+    "PGP Encrypt and Sign" operations. It is NOT compatible with standard OpenPGP.
+
+    Args:
+        0. Recipient Private Key (string): ASCII-armoured PyChef PGP private key
+        1. Passphrase (string): Password to unlock the private key (if password-protected)
+
+    Returns:
+        The decrypted plaintext data.
+
+    Raises:
+        ValueError: If decryption fails (wrong key, wrong passphrase, corrupted data)
+    """
     private = str(arg(args, 0, ""))
     if not private:
         raise ValueError("Enter the private key of the recipient")
@@ -471,6 +550,24 @@ def pgp_decrypt(value: Data, args: Args) -> Data:
 
 @implementation("PGP Sign", category="PGP")
 def pgp_sign(value: Data, args: Args) -> str:
+    """Create a PyChef-proprietary PGP signature.
+
+    IMPORTANT: This creates signatures in PyChef's proprietary format ("PyChef-PGP-1").
+    These signatures are NOT compatible with standard OpenPGP implementations.
+
+    Use only for PyChef-to-PyChef operations within a single workflow.
+    For actual OpenPGP compatibility, use a dedicated OpenPGP library.
+
+    Args:
+        0. Signer Private Key (string): ASCII-armoured PyChef PGP private key
+        1. Passphrase (string): Password to unlock the private key (if password-protected)
+
+    Returns:
+        ASCII-armoured signed message.
+
+    Note:
+        Uses RSA or ECDSA signatures depending on the key type.
+    """
     private = str(arg(args, 0, ""))
     if not private:
         raise ValueError("Enter the private key of the signer")
@@ -480,6 +577,21 @@ def pgp_sign(value: Data, args: Args) -> str:
 
 @implementation("PGP Verify", category="PGP")
 def pgp_verify(value: Data, args: Args) -> Data:
+    """Verify a PyChef-proprietary PGP signature.
+
+    IMPORTANT: This only verifies signatures created by PyChef's "PGP Sign" or
+    "PGP Encrypt and Sign" operations. It is NOT compatible with standard OpenPGP.
+
+    Args:
+        0. Signer Public Key (string): ASCII-armoured PyChef PGP public key
+
+    Returns:
+        The signed data with verification metadata prepended, or raises ValueError
+        if verification fails.
+
+    Raises:
+        ValueError: If signature verification fails or data is corrupted
+    """
     public = str(arg(args, 0, ""))
     if not public:
         raise ValueError("Enter the public key of the signer")
@@ -494,6 +606,26 @@ def pgp_verify(value: Data, args: Args) -> Data:
 
 @implementation("PGP Encrypt and Sign", category="PGP")
 def pgp_encrypt_and_sign(value: Data, args: Args) -> str:
+    """Encrypt and sign data using PyChef-proprietary PGP format.
+
+    IMPORTANT: This uses PyChef's proprietary format ("PyChef-PGP-1").
+    The result is NOT compatible with standard OpenPGP implementations.
+
+    Use only for PyChef-to-PyChef operations within a single workflow.
+    For actual OpenPGP compatibility, use a dedicated OpenPGP library.
+
+    Args:
+        0. Signer Private Key (string): ASCII-armoured PyChef PGP private key
+        1. Signer Passphrase (string): Password to unlock the signer's private key
+        2. Recipient Public Key (string): ASCII-armoured PyChef PGP public key
+
+    Returns:
+        ASCII-armoured encrypted and signed message.
+
+    Note:
+        The message is first signed, then the signed message is encrypted.
+        This provides both authentication (signature) and confidentiality (encryption).
+    """
     private, public = str(arg(args, 0, "")), str(arg(args, 2, ""))
     if not private:
         raise ValueError("Enter the private key of the signer")
@@ -506,6 +638,23 @@ def pgp_encrypt_and_sign(value: Data, args: Args) -> str:
 
 @implementation("PGP Decrypt and Verify", category="PGP")
 def pgp_decrypt_and_verify(value: Data, args: Args) -> Data:
+    """Decrypt and verify a PyChef-proprietary PGP message.
+
+    IMPORTANT: This only works with messages created by PyChef's
+    "PGP Encrypt and Sign" operation. It is NOT compatible with standard OpenPGP.
+
+    Args:
+        0. Signer Public Key (string): ASCII-armoured PyChef PGP public key
+        1. Recipient Private Key (string): ASCII-armoured PyChef PGP private key
+        2. Recipient Passphrase (string): Password to unlock the private key
+
+    Returns:
+        The decrypted plaintext data with verification metadata, or raises ValueError
+        if decryption or verification fails.
+
+    Raises:
+        ValueError: If decryption fails or signature verification fails
+    """
     public, private = str(arg(args, 0, "")), str(arg(args, 1, ""))
     if not public:
         raise ValueError("Enter the public key of the signer")

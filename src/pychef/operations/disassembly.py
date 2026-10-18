@@ -432,6 +432,16 @@ def disassemble_x86(value: Data, args: Args) -> str:
     if mode_text not in {"16", "32", "64"}:
         raise ValueError("Invalid mode value")
     mode = int(mode_text)
+
+    # Validate Compatibility argument
+    compatibility = str(arg(args, 1, "Full x86 architecture"))
+    if compatibility != "Full x86 architecture":
+        raise ValueError(
+            f"Unsupported Compatibility mode: {compatibility!r}. "
+            "PyChef x86 disassembler only supports 'Full x86 architecture'. "
+            "Other compatibility modes (Knights Corner, Larrabee, etc.) are not implemented."
+        )
+
     code_segment = require_int(arg(args, 2, 16), name="code segment")
     offset = require_int(arg(args, 3, 0), name="offset")
     show_hex, show_position = bool(arg(args, 4, True)), bool(arg(args, 5, True))

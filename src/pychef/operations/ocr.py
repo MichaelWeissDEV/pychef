@@ -190,6 +190,26 @@ def _ocr(image: _Image) -> tuple[str, float]:
 @implementation("Optical Character Recognition", category="OCR")
 def optical_character_recognition(value: Data, args: Args) -> str:
     data = to_bytes(value)
+
+    # Validate OCR Engine Mode argument
+    engine_mode = str(arg(args, 1, "Tesseract only"))
+    if engine_mode not in {"Tesseract only", "LSTM only", "Tesseract/LSTM Combined"}:
+        raise ValueError(
+            f"Unsupported OCR Engine Mode: {engine_mode!r}. "
+            "Supported modes: Tesseract only, LSTM only, Tesseract/LSTM Combined"
+        )
+
+    # PyChef uses a dependency-free bitmap OCR, not actual Tesseract/LSTM
+    # Accept the modes to maintain spec compatibility, but note that
+    # "Tesseract only" is the only mode that makes sense (as default)
+    if engine_mode != "Tesseract only":
+        # LSTM and combined modes are not actually implemented
+        raise ValueError(
+            f"OCR Engine Mode '{engine_mode}' is not supported. "
+            "PyChef uses a dependency-free bitmap OCR implementation. "
+            "Only the default 'Tesseract only' mode is accepted for compatibility."
+        )
+
     try:
         image = _pbm(data) if data.startswith((b"P1", b"P4")) else _image(data)[0]
     except ValueError as exc:

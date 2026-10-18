@@ -54,6 +54,15 @@ def test_disassemble_x86_common_function() -> None:
     assert result.endswith("ret\r\n")
 
 
+def test_disassemble_x86_unsupported_compatibility() -> None:
+    # Knights Corner is not supported by PyChef's x86 disassembler
+    with pytest.raises(Exception, match="Unsupported Compatibility mode"):
+        bake(
+            "55 48 89 e5",
+            [{"op": "Disassemble x86", "args": ["64", "Knights Corner", 16, 0, True, True]}],
+        )
+
+
 def test_yara_official_regex_output() -> None:
     rules = (
         "rule foo {strings: $re1 = /foo/ condition: $re1} "
@@ -98,10 +107,17 @@ def test_dependency_free_bitmap_ocr() -> None:
         ],
     )
     assert (
-        bake(rendered, [{"op": "Optical Character Recognition", "args": [False, "LSTM only"]}])
+        bake(rendered, [{"op": "Optical Character Recognition", "args": [False, "Tesseract only"]}])
         == "HELLO"
     )
     confident = bake(
-        rendered, [{"op": "Optical Character Recognition", "args": [True, "LSTM only"]}]
+        rendered, [{"op": "Optical Character Recognition", "args": [True, "Tesseract only"]}]
     )
     assert confident == "Confidence: 100%\n\nHELLO"
+
+
+def test_ocr_unsupported_engine_mode() -> None:
+    blank = _png_encode(_Image(180, 35, [(255, 255, 255, 255)] * (180 * 35)))
+    # LSTM only is not supported by PyChef's dependency-free OCR
+    with pytest.raises(Exception, match="OCR Engine Mode.*not supported"):
+        bake(blank, [{"op": "Optical Character Recognition", "args": [False, "LSTM only"]}])
