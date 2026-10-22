@@ -29,9 +29,9 @@ class TestPgpFormatCompatibility:
         """Verify that generated keys contain PyChef-specific magic identifier."""
         import base64
         import re
-        
+
         private, public = _keys("RSA-1024")
-        
+
         # PyChef PGP keys contain the magic identifier in the JSON payload
         # We need to extract and decode the base64 content
         def check_magic(text: str) -> bool:
@@ -39,25 +39,28 @@ class TestPgpFormatCompatibility:
             match = re.search(r"-----BEGIN PGP (.*) BLOCK-----(.*)-----END PGP", text, re.DOTALL)
             if not match:
                 return False
-            
+
             # Get the body and decode
             body = match.group(2)
             # Remove Version line, empty lines, and checksum line (starts with =)
-            lines = [line.strip() for line in body.split("\n") 
-                     if line.strip() and not line.startswith("Version:") and not line.startswith("=")]
+            lines = [
+                line.strip()
+                for line in body.split("\n")
+                if line.strip() and not line.startswith("Version:") and not line.startswith("=")
+            ]
             if not lines:
                 return False
-            
+
             # Combine all lines
             b64_data = "".join(lines)
-            
+
             try:
                 decoded = base64.b64decode(b64_data)
                 content = decoded.decode("utf-8")
                 return "PyChef-PGP-1" in content
             except Exception:
                 return False
-        
+
         assert check_magic(private), "Private key should contain PyChef-PGP-1 magic"
         assert check_magic(public), "Public key should contain PyChef-PGP-1 magic"
 
@@ -66,17 +69,23 @@ class TestPgpFormatCompatibility:
         import base64
         import json
         import re
-        
-        private, public = _keys("RSA-1024")
+
+        _private, public = _keys("RSA-1024")
         encrypted = bake("test", [{"op": "PGP Encrypt", "args": [public]}])
         assert isinstance(encrypted, str)
-        
+
         # Extract and decode the JSON payload
-        match = re.search(r"-----BEGIN PGP MESSAGE-----(.*)-----END PGP MESSAGE-----", encrypted, re.DOTALL)
+        match = re.search(
+            r"-----BEGIN PGP MESSAGE-----(.*)-----END PGP MESSAGE-----", encrypted, re.DOTALL
+        )
         assert match is not None
-        
+
         body = match.group(1)
-        lines = [line.strip() for line in body.split("\n") if line.strip() and not line.startswith("Version:")]
+        lines = [
+            line.strip()
+            for line in body.split("\n")
+            if line.strip() and not line.startswith("Version:")
+        ]
         if lines:
             # Combine all base64 lines
             b64_data = "".join(lines)
@@ -93,17 +102,23 @@ class TestPgpFormatCompatibility:
         import base64
         import json
         import re
-        
-        private, public = _keys("RSA-1024")
+
+        private, _public = _keys("RSA-1024")
         signed = bake("test", [{"op": "PGP Sign", "args": [private, ""]}])
         assert isinstance(signed, str)
-        
+
         # Extract and decode the JSON payload
-        match = re.search(r"-----BEGIN PGP MESSAGE-----(.*)-----END PGP MESSAGE-----", signed, re.DOTALL)
+        match = re.search(
+            r"-----BEGIN PGP MESSAGE-----(.*)-----END PGP MESSAGE-----", signed, re.DOTALL
+        )
         assert match is not None
-        
+
         body = match.group(1)
-        lines = [line.strip() for line in body.split("\n") if line.strip() and not line.startswith("Version:")]
+        lines = [
+            line.strip()
+            for line in body.split("\n")
+            if line.strip() and not line.startswith("Version:")
+        ]
         if lines:
             b64_data = "".join(lines)
             try:
@@ -119,15 +134,21 @@ class TestPgpFormatCompatibility:
         import base64
         import json
         import re
-        
-        private, public = _keys("RSA-1024")
-        
+
+        _private, public = _keys("RSA-1024")
+
         # Extract and decode the JSON payload from public key
-        match = re.search(r"-----BEGIN PGP PUBLIC KEY BLOCK-----(.*)-----END PGP", public, re.DOTALL)
+        match = re.search(
+            r"-----BEGIN PGP PUBLIC KEY BLOCK-----(.*)-----END PGP", public, re.DOTALL
+        )
         assert match is not None
-        
+
         body = match.group(1)
-        lines = [line.strip() for line in body.split("\n") if line.strip() and not line.startswith("Version:")]
+        lines = [
+            line.strip()
+            for line in body.split("\n")
+            if line.strip() and not line.startswith("Version:")
+        ]
         if lines:
             b64_data = "".join(lines)
             try:
@@ -142,33 +163,39 @@ class TestPgpFormatCompatibility:
 
     def test_pgp_format_is_not_opengpg(self) -> None:
         """Document that PyChef PGP format is not OpenPGP-compatible.
-        
+
         This test verifies that PyChef PGP uses a different format from
         standard OpenPGP (RFC 4880). Standard OpenPGP uses binary packet
         headers with specific tag bytes, while PyChef uses JSON with a
         magic identifier.
         """
-        private, public = _keys("RSA-1024")
-        
+        _private, public = _keys("RSA-1024")
+
         # Standard OpenPGP public keys start with packet tag 0x99 (public-key packet)
         # PyChef PGP keys start with ASCII armour containing JSON
         # This means they are fundamentally different formats
-        
+
         # Verify PyChef format
         assert "-----BEGIN PGP PUBLIC KEY BLOCK-----" in public
-        
+
         # OpenPGP format would have binary data after the armour
         # PyChef has JSON-like structure
         import base64
         import json
         import re
-        
+
         # Extract base64 content
-        match = re.search(r"-----BEGIN PGP PUBLIC KEY BLOCK-----(.*)-----END PGP", public, re.DOTALL)
+        match = re.search(
+            r"-----BEGIN PGP PUBLIC KEY BLOCK-----(.*)-----END PGP", public, re.DOTALL
+        )
         assert match is not None
-        
+
         body = match.group(1)
-        lines = [line.strip() for line in body.split("\n") if line.strip() and not line.startswith("Version:")]
+        lines = [
+            line.strip()
+            for line in body.split("\n")
+            if line.strip() and not line.startswith("Version:")
+        ]
         if lines:
             b64_data = "".join(lines)
             try:
@@ -185,11 +212,10 @@ class TestPgpFormatCompatibility:
 
 class TestPgpRoundtrip:
     """Tests for PyChef-to-PyChef PGP operations (proprietary format).
-    
+
     These tests verify that the proprietary format works correctly
     for PyChef-to-PyChef operations.
     """
-
 
     @pytest.mark.parametrize("kind", ["RSA-1024", "ECC-256"])
     def test_pgp_encrypt_decrypt_and_binary_preservation(self, kind: str) -> None:

@@ -732,38 +732,31 @@ def _add_format_and_version_info(
     for x in range(9):
         if x == 6:
             continue  # Skip timing pattern
-        if x < size and 8 < size:
-            if x < len(format_bits):
-                # Check the mask
-                if result[8][x] is None:
-                    mask_bit = (format_mask_top >> (8 - x)) & 1
-                    result[8][x] = bool(format_bits[x] ^ mask_bit)
+        # Only unset modules are filled (the mask is applied to the format bit)
+        if x < size and size > 8 and x < len(format_bits) and result[8][x] is None:
+            mask_bit = (format_mask_top >> (8 - x)) & 1
+            result[8][x] = bool(format_bits[x] ^ mask_bit)
 
     # Place format info in column 8, rows 0-8 (excluding row 6)
     for y in range(9):
         if y == 6:
             continue  # Skip timing pattern
-        if y < size and 8 < size:
-            if y < len(format_bits):
-                if result[y][8] is None:
-                    mask_bit = (format_mask_top >> (8 - y)) & 1
-                    result[y][8] = bool(format_bits[y] ^ mask_bit)
+        if y < size and size > 8 and y < len(format_bits) and result[y][8] is None:
+            mask_bit = (format_mask_top >> (8 - y)) & 1
+            result[y][8] = bool(format_bits[y] ^ mask_bit)
 
     # Place format info in bottom-left mirror area (row size-8, columns 0-8)
     for x in range(9):
-        if x < size and (size - 8) < size:
-            if x < len(format_bits):
-                if result[size - 8][x] is None:
-                    mask_bit = (format_mask_mirror >> (8 - x)) & 1
-                    result[size - 8][x] = bool(format_bits[x] ^ mask_bit)
+        if x < size and (size - 8) < size and x < len(format_bits) and result[size - 8][x] is None:
+            mask_bit = (format_mask_mirror >> (8 - x)) & 1
+            result[size - 8][x] = bool(format_bits[x] ^ mask_bit)
 
     # Place format info in column 8, bottom mirror (rows size-8 to size-1)
     for y in range(size - 8, size):
         mirror_y = y - (size - 8)
-        if 8 < size and mirror_y < len(format_bits):
-            if result[y][8] is None:
-                mask_bit = (format_mask_mirror >> (8 - mirror_y)) & 1
-                result[y][8] = bool(format_bits[mirror_y] ^ mask_bit)
+        if size > 8 and mirror_y < len(format_bits) and result[y][8] is None:
+            mask_bit = (format_mask_mirror >> (8 - mirror_y)) & 1
+            result[y][8] = bool(format_bits[mirror_y] ^ mask_bit)
 
     return result
 
@@ -958,7 +951,7 @@ def generate_qr_code(value: Data, args: Args) -> Data:
         - Encode 100 bytes of binary data with "H" error correction
         - Generate a 200x200 pixel QR code with module size 10
     """
-    from .image_ops import _Image, _bmp_encode, _png_encode
+    from .image_ops import _bmp_encode, _Image, _png_encode
 
     output_format = str(arg(args, 0, "PNG")).upper()
     module_size = max(1, require_int(arg(args, 1, 5), name="module size"))
@@ -1120,7 +1113,7 @@ def _image_to_binary_matrix(image: _Image) -> tuple[list[list[bool]] | None, int
     gray_values: list[int] = []
     for pixel in image.pixels:
         # Convert RGBA to grayscale using luminance formula
-        r, g, b, a = pixel
+        r, g, b, _a = pixel
         # Use perceived brightness
         gray = (r * 299 + g * 587 + b * 114) // 1000
         gray_values.append(gray)
@@ -1142,7 +1135,7 @@ def _image_to_binary_matrix(image: _Image) -> tuple[list[list[bool]] | None, int
         row = []
         for x in range(width):
             pixel = image.pixels[y * width + x]
-            r, g, b, a = pixel
+            r, g, b, _a = pixel
             gray = (r * 299 + g * 587 + b * 114) // 1000
             row.append(gray < threshold)
         binary.append(row)
@@ -1282,7 +1275,6 @@ def _decode_qr_code(matrix: list[list[bool]], version: int) -> bytes:
 
     # Step 2: Apply inverse mask to get raw data
     # First, read all the modules
-    raw_modules: list[bool] = []
 
     # Read in the reverse order of encoding
     # We need to follow the same path as encoding but in reverse
@@ -1302,7 +1294,7 @@ def _decode_qr_code(matrix: list[list[bool]], version: int) -> bytes:
         )
 
     data_codewords = codewords[:num_data]
-    ecc_codewords = codewords[num_data : num_data + num_ecc]
+    # (error-correction codewords codewords[num_data : num_data + num_ecc] are not used yet)
 
     # Step 5: Perform error correction (if needed)
     # For now, we assume no errors (perfect read)
@@ -1332,15 +1324,14 @@ def _read_format_info(
 
     # Read top-left format area (row 8, columns 0-8, excluding 6)
     for x in [0, 1, 2, 3, 4, 5, 7, 8]:
-        if x < size and 8 < size:
+        if x < size and size > 8:
             format_bits.append(matrix[8][x])
 
     # Read column 8, rows 0-8 (excluding 6)
     for y in [0, 1, 2, 3, 4, 5, 7, 8]:
-        if y < size and 8 < size:
-            # Only add if not already at correct position
-            if not (y == 8 and len(format_bits) >= 15):
-                format_bits.append(matrix[y][8])
+        # Only add if not already at correct position
+        if y < size and size > 8 and not (y == 8 and len(format_bits) >= 15):
+            format_bits.append(matrix[y][8])
 
     # We should have at least 15 bits
     if len(format_bits) < 15:
@@ -1452,9 +1443,9 @@ def _looks_like_finder_pattern(matrix: list[list[bool]], x: int, y: int, size: i
     """Check if (x, y) appears to be part of a finder pattern."""
     # This is a heuristic - in practice, we'd have a better way
     # For now, check if it's near a corner and has the right color
-    if (x <= 10 and y <= 10) or (x >= size - 11 and y <= 10) or (x <= 10 and y >= size - 11):
-        return True
-    return False
+    return bool(
+        (x <= 10 and y <= 10) or (x >= size - 11 and y <= 10) or (x <= 10 and y >= size - 11)
+    )
 
 
 def _extract_codewords(matrix: list[list[bool | None]], version: int, size: int) -> list[int]:
@@ -1492,7 +1483,7 @@ def _extract_codewords(matrix: list[list[bool | None]], version: int, size: int)
     # For now, assume bits are in order
     while len(bits) >= 8:
         byte = 0
-        for i in range(8):
+        for _i in range(8):
             if len(bits) > 0:
                 byte = (byte << 1) | bits.pop(0)
             else:
@@ -1598,8 +1589,8 @@ def _decode_data_stream(data_bytes: bytes, version: int, ec_level: ErrorCorrecti
 
 
 __all__ = [
-    "generate_qr_code",
-    "parse_qr_code",
-    "generate_qr_code_matrix",
     "ErrorCorrectionLevel",
+    "generate_qr_code",
+    "generate_qr_code_matrix",
+    "parse_qr_code",
 ]

@@ -119,5 +119,5 @@ def test_dependency_free_bitmap_ocr() -> None:
 def test_ocr_unsupported_engine_mode() -> None:
     blank = _png_encode(_Image(180, 35, [(255, 255, 255, 255)] * (180 * 35)))
     # LSTM only is not supported by PyChef's dependency-free OCR
-    with pytest.raises(Exception, match="OCR Engine Mode.*not supported"):
+    with pytest.raises(Exception, match=r"OCR Engine Mode.*not supported"):
         bake(blank, [{"op": "Optical Character Recognition", "args": [False, "LSTM only"]}])

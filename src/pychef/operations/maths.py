@@ -9,9 +9,9 @@ from collections.abc import Callable
 from decimal import Decimal, InvalidOperation, getcontext
 from functools import reduce
 
+from .._bytes import xor_repeating
 from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
-from .._bytes import xor_repeating
 from ._utils import arg, char_rep, require_int
 
 getcontext().prec = 100

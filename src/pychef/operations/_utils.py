@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, TypeVar, cast
 
-
 from ..types import Args
 
 T = TypeVar("T")
