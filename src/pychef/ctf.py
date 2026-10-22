@@ -7,6 +7,7 @@ import hashlib
 from collections.abc import Iterable, Sequence
 from typing import Any, Literal
 
+from ._bytes import xor_repeating
 from .types import Data, to_bytes
 
 BytesLike = bytes | bytearray | memoryview
@@ -272,7 +273,7 @@ def xor_bytes(
         raise ValueError("XOR key must not be empty")
     if not repeat and len(key_bytes) < len(data):
         raise ValueError("XOR key is shorter than the input")
-    return bytes(byte ^ key_bytes[index % len(key_bytes)] for index, byte in enumerate(data))
+    return xor_repeating(data, key_bytes)
 
 
 def rol(value: int, amount: int, bits: int = 32) -> int:

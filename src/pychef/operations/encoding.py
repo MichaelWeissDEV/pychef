@@ -27,6 +27,7 @@ _BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 _BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 _MODHEX = "cbdefghijklnrtuv"
 _HEX = re.compile(r"[0-9a-fA-F]")
+_NON_HEX = re.compile(r"[^0-9a-fA-F]+")
 _Z85_SPEC = r"0-9a-zA-Z.\-:+=^!/*?&<>()[]{}@%$#"
 _IPV6_BASE85_SPEC = r"0-9A-Za-z!#$%&()*+\-;<=>?@^_`{|}~"
 
@@ -250,21 +251,28 @@ def to_hex(value: Data, args: Args) -> str:
     bytes_per_line = require_int(arg(args, 1, 0), name="bytes per line")
     data = to_bytes(value)
     if delimiter_name == "0x with comma":
-        chunks = [f"0x{byte:02x}" for byte in data]
-        delimiter = ","
+        prefix, delimiter = "0x", ","
     elif delimiter_name in {"0x", "\\x"}:
-        chunks = [f"{delimiter_name}{byte:02x}" for byte in data]
-        delimiter = ""
+        prefix, delimiter = str(delimiter_name), ""
     else:
-        chunks = [f"{byte:02x}" for byte in data]
-        delimiter = char_rep(delimiter_name, " ")
+        prefix, delimiter = "", char_rep(delimiter_name, " ")
     if not bytes_per_line or bytes_per_line < 1:
-        return delimiter.join(chunks)
-    lines = [
-        delimiter.join(chunks[index : index + bytes_per_line])
-        for index in range(0, len(chunks), bytes_per_line)
-    ]
-    return "\n".join(lines)
+        return _hex_line(data, prefix, delimiter)
+    return "\n".join(
+        _hex_line(data[index : index + bytes_per_line], prefix, delimiter)
+        for index in range(0, len(data), bytes_per_line)
+    )
+
+
+def _hex_line(data: bytes, prefix: str, delimiter: str) -> str:
+    """Join the hex bytes of *data*; uses ``bytes.hex`` (C speed) for the common cases."""
+    if not prefix:
+        if not delimiter:
+            return data.hex()
+        if len(delimiter) == 1 and delimiter.isascii():
+            return data.hex(delimiter)
+    digits = data.hex()
+    return delimiter.join(prefix + digits[index : index + 2] for index in range(0, len(digits), 2))
 
 
 @implementation("From Hex", category="Encoding")
@@ -275,7 +283,7 @@ def from_hex(value: Data, args: Args) -> bytes:
         return b""
     if delimiter_name == "Auto":
         text = re.sub(r"(?:0x|\\x)", "", text, flags=re.IGNORECASE)
-        digits = "".join(_HEX.findall(text))
+        digits = _NON_HEX.sub("", text)
     else:
         delimiter = char_rep(delimiter_name, " ")
         if delimiter_name == "0x with comma":

@@ -11,6 +11,7 @@ from functools import reduce
 
 from ..registry import implementation
 from ..types import Args, Data, to_bytes, to_text
+from .._bytes import xor_repeating
 from ._utils import arg, char_rep, require_int
 
 getcontext().prec = 100
@@ -49,6 +50,8 @@ def _bitwise(
     null_preserving = bool(arg(args, 2, False)) if xor else False
     output = bytearray()
     data = to_bytes(value)
+    if xor and scheme == "Standard" and not null_preserving and key:
+        return xor_repeating(data, bytes(key))
     for index, byte in enumerate(data):
         key_byte = (
             data[index + 1]

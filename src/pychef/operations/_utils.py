@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, TypeVar, cast
 
+
 from ..types import Args
 
 T = TypeVar("T")
@@ -22,6 +23,7 @@ def char_rep(name: Any, default: str = " ") -> str:
         return default
     return {
         "Space": " ",
+        "Percent": "%",
         "Comma": ",",
         "Semi-colon": ";",
         "Colon": ":",
