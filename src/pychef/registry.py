@@ -77,7 +77,23 @@ class OperationRegistry:
                     global_op = registry._operations[name]
                     self._operations[name] = global_op
                     return global_op
-            raise UnknownOperationError(f"unknown operation: {name}")
+            raise UnknownOperationError(f"unknown operation: {name}{self._suggestion(name)}")
+
+    def _suggestion(self, name: str) -> str:
+        """Return a " (did you mean ...?)" hint for a misspelled operation name."""
+        import difflib
+
+        names = self.names()
+        folded = {candidate.casefold(): candidate for candidate in names}
+        key = str(name).replace("_", " ").casefold()
+        if key in folded:
+            matches = [folded[key]]
+        else:
+            close = difflib.get_close_matches(key, list(folded), n=3, cutoff=0.75)
+            matches = [folded[candidate] for candidate in close]
+        if not matches:
+            return ""
+        return " (did you mean " + " or ".join(repr(match) for match in matches) + "?)"
 
     def names(self) -> tuple[str, ...]:
         with self._lock:

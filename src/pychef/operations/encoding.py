@@ -15,6 +15,7 @@ import re
 import struct
 from decimal import Decimal, InvalidOperation, localcontext
 from fractions import Fraction
+from functools import lru_cache
 from urllib.parse import quote, unquote, unquote_plus
 
 from ..registry import implementation
@@ -45,6 +46,12 @@ def _html_entity_names() -> dict[str, str]:
 
 
 _HTML_ENTITY_NAMES = _html_entity_names()
+
+
+@lru_cache(maxsize=64)
+def _outside(alphabet: str) -> re.Pattern[str]:
+    """Pattern matching every character that is not in *alphabet* (cached per alphabet)."""
+    return re.compile("[^" + "".join(re.escape(char) for char in sorted(set(alphabet))) + "]+")
 
 
 def _translate(text: str, source: str, target: str) -> str:
@@ -103,8 +110,7 @@ def from_base64(value: Data, args: Args) -> bytes:
         raise ValueError("Base64 alphabet must contain 64 symbols and optional padding")
     text = to_text(value).strip()
     if remove_non_alphabet:
-        allowed = set(alphabet)
-        text = "".join(character for character in text if character in allowed)
+        text = _outside(alphabet).sub("", text)
     source = alphabet + ("=" if len(alphabet) == 64 else "")
     text = _translate(text, source, _BASE64)
     text += "=" * (-len(text) % 4)
@@ -131,8 +137,7 @@ def from_base32(value: Data, args: Args) -> bytes:
         raise ValueError("Base32 alphabet must contain 32 symbols and optional padding")
     text = to_text(value)
     if remove_non_alphabet:
-        allowed = set(alphabet)
-        text = "".join(character for character in text if character in allowed)
+        text = _outside(alphabet).sub("", text)
     source = alphabet + ("=" if len(alphabet) == 32 else "")
     text = _translate(text, source, _BASE32)
     text += "=" * (-len(text) % 8)
@@ -171,8 +176,7 @@ def from_base85(value: Data, args: Args) -> bytes:
     if text.startswith("<~") and text.endswith("~>"):
         text = text[2:-2]
     if remove_non_alphabet:
-        allowed = set(alphabet + zero_character + "~")
-        text = "".join(character for character in text if character in allowed)
+        text = _outside(alphabet + zero_character + "~").sub("", text)
         if text.startswith("<~") and text.endswith("~>"):
             text = text[2:-2]
     if not text:

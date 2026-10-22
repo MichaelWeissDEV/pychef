@@ -3,6 +3,30 @@
 All notable changes to this project are documented here. Releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `Recipe.from_cyberchef()` / `Recipe.to_cyberchef()` read and write CyberChef's native
+  "Chef format" (`From_Hex('Auto')To_Base64(...)`, including `/disabled` and `/breakpoint`)
+  and JSON; `Recipe.from_cyberchef_link()` / `Recipe.to_cyberchef_link()` read and build
+  shareable CyberChef links including the input. Parsing follows CyberChef's own
+  `parseRecipeConfig`.
+- Unknown operation names now suggest close matches
+  (`unknown operation: To base64 (did you mean 'To Base64'?)`).
+
+### Changed
+
+- Passing a single string as a recipe (`bake(data, "From Hex")`) raises `RecipeError` with
+  guidance; previously every character was looked up as an operation name.
+- Faster byte paths with unchanged output: XOR (Standard scheme) about 40x, `To Hex` about
+  80x, `From Hex` (Auto) about 3x, and `From Base64` about 3x on 1 MiB inputs (local
+  measurement); Base32 and Base85 decoding use the same alphabet filter.
+
+### Fixed
+
+- `To Hex` with the `Percent` delimiter emitted the word (`41Percent42`) instead of `%`.
+
 ## [0.2.0] - 2026-10-14
 
 First release since 0.1.1.

@@ -16,6 +16,7 @@ PAGES = [
     "execution-policies",
     "custom-registries",
     "tracing",
+    "recipes",
 ]
 
 

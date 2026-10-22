@@ -31,6 +31,12 @@ class Recipe:
     """
 
     def __init__(self, config: RecipeConfig) -> None:
+        if isinstance(config, (str, bytes, bytearray)):
+            raise RecipeError(
+                "a recipe is a list of steps, not a single string: use "
+                f"[{config!r}] for one operation, or Recipe.from_cyberchef(...) for a "
+                "recipe copied from CyberChef"
+            )
         self.steps = tuple(self._parse_step(step) for step in config)
 
     def __repr__(self) -> str:
@@ -78,6 +84,60 @@ class Recipe:
         if not isinstance(config, list):
             raise RecipeError("a JSON recipe must be a list of steps")
         return cls(config)
+
+    @classmethod
+    def from_cyberchef(cls, text: str) -> Recipe:
+        """Build a recipe from anything the CyberChef web app exports.
+
+        Accepts the "Chef format" (``From_Hex('Auto')To_Base64('A-Za-z0-9+/=')``),
+        "Clean"/"Compact JSON", or a shared CyberChef link (its ``recipe``
+        parameter is used; read the input with :meth:`from_cyberchef_link`).
+        Parsing follows CyberChef's own ``parseRecipeConfig``. Arguments are only
+        checked when the recipe runs.
+        """
+        from ._cyberchef_format import CyberChefFormatError, parse_recipe
+
+        if not isinstance(text, str):
+            raise TypeError("text must be a str")
+        try:
+            return cls(parse_recipe(text))
+        except CyberChefFormatError as exc:
+            raise RecipeError(str(exc)) from exc
+
+    @classmethod
+    def from_cyberchef_link(cls, url: str) -> tuple[Recipe, bytes | None]:
+        """Return the recipe and the input bytes (or ``None``) of a CyberChef link."""
+        from ._cyberchef_format import CyberChefFormatError, link_input
+
+        try:
+            data = link_input(url)
+        except CyberChefFormatError as exc:
+            raise RecipeError(str(exc)) from exc
+        return cls.from_cyberchef(url), data
+
+    def to_cyberchef(self, *, newline: bool = False) -> str:
+        """Return the recipe in CyberChef's "Chef format" (one line, or one step per line).
+
+        Raises :class:`TypeError` if an argument is not JSON serializable.
+        """
+        from ._cyberchef_format import generate_pretty
+
+        return generate_pretty(self.to_config(), newline=newline)
+
+    def to_cyberchef_link(
+        self,
+        input: str | bytes | None = None,
+        *,
+        base_url: str = "https://gchq.github.io/CyberChef/",
+    ) -> str:
+        """Return a link that opens this recipe (and optionally *input*) in CyberChef.
+
+        A ``str`` input is UTF-8 encoded. Use *base_url* for a self-hosted CyberChef.
+        """
+        from ._cyberchef_format import build_link
+
+        data = input.encode("utf-8") if isinstance(input, str) else input
+        return build_link(self.to_config(), data, base_url=base_url)
 
     @staticmethod
     def _parse_step(step: RecipeStep | Mapping[str, Any] | str) -> RecipeStep:

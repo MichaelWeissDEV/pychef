@@ -80,3 +80,32 @@ def test_from_hex_auto_ignores_separators_and_prefixes() -> None:
     assert from_hex("0x41, 0x42;\\x43\n44") == b"ABCD"
     assert from_hex("") == b""
     assert from_hex("abc") == b"\x0a\xbc"  # odd digit count is left-padded
+
+
+@pytest.mark.parametrize(
+    "alphabet",
+    ["A-Za-z0-9+/=", "A-Za-z0-9-_", "./0-9A-Za-z=", "!-,-0-689@A-NP-VX-Z[`a-fh-mp-r", "A-Z2-7="],
+)
+def test_alphabet_filter_matches_per_character_definition(alphabet: str) -> None:
+    from pychef.operations._utils import expand_alphabet
+    from pychef.operations.encoding import _outside
+
+    expanded = expand_alphabet(alphabet)
+    rng = random.Random(alphabet)
+    noise = expanded + " \n\t\\]^-[()*?{}|.$äß€\x00"
+    for _ in range(200):
+        text = "".join(rng.choice(noise) for _ in range(rng.randint(0, 60)))
+        expected = "".join(char for char in text if char in set(expanded))
+        assert _outside(expanded).sub("", text) == expected
+
+
+def test_base64_decoding_with_noise_is_unchanged() -> None:
+    from pychef.ops import from_base64, to_base64
+
+    data = bytes(range(256)) * 3
+    noisy = "\n".join(to_base64(data)[i : i + 60] for i in range(0, len(to_base64(data)), 60))
+    assert from_base64(noisy + "  !! ") == data
+    assert bake(noisy, [{"op": "From Base32", "args": ["A-Z2-7=", True]}]) is not None
+    assert bake('<~87cURD]i,"Ebo80~>', [{"op": "From Base85", "args": ["!-u", True, "z"]}]) == (
+        b"Hello World!"  # verified against the implementation before this change
+    )

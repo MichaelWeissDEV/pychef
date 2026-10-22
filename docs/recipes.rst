@@ -98,3 +98,41 @@ A pipeline containing only registered operation stages exposes ``.recipe``:
 If the pipeline contains ``apply``, branching, packet parsing, hashing helper
 stages, or other Python-only stages, ``.recipe`` raises :class:`pychef.RecipeError`
 because those stages cannot be represented as CyberChef recipe dictionaries.
+
+Import and export CyberChef recipes
+-----------------------------------
+
+Recipes copied from the CyberChef web app work directly. ``Recipe.from_cyberchef``
+accepts the **Chef format** shown by "Save recipe", the **Clean/Compact JSON**
+formats, and a shared **CyberChef link**; it follows CyberChef's own parser.
+
+.. doctest::
+
+   >>> from pychef import Recipe, bake
+   >>> recipe = Recipe.from_cyberchef("From_Hex('Auto')To_Base64('A-Za-z0-9+/=')")
+   >>> recipe.to_config()
+   [{'op': 'From Hex', 'args': ['Auto']}, {'op': 'To Base64', 'args': ['A-Za-z0-9+/=']}]
+   >>> bake("414243", recipe)
+   'QUJD'
+
+Export works the other way round, including a link that opens the recipe (and,
+optionally, the input) in CyberChef; ``base_url`` points to a self-hosted instance:
+
+.. doctest::
+
+   >>> recipe.to_cyberchef()
+   "From_Hex('Auto')To_Base64('A-Za-z0-9+/=')"
+   >>> link = recipe.to_cyberchef_link(b"414243")
+   >>> link
+   "https://gchq.github.io/CyberChef/#recipe=From_Hex('Auto')To_Base64('A-Za-z0-9%2B/%3D')&input=NDE0MjQz"
+   >>> Recipe.from_cyberchef_link(link)[1]
+   b'414243'
+
+Arguments are only validated when the recipe runs. Arguments that are not JSON values
+(for example ``bytes``) cannot be exported. Use ``Pipeline(recipe.steps)`` to continue
+with a pipeline.
+
+A recipe is always a *list* of steps. Passing a single string such as
+``bake(data, "From Hex")`` raises ``RecipeError`` with a hint instead of treating
+every character as an operation name. Misspelled operation names produce a
+suggestion, for example ``unknown operation: To base64 (did you mean 'To Base64'?)``.
